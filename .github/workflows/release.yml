@@ -185,6 +185,13 @@ jobs:
           echo "${{ secrets.OTA_KEY }}" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
+      - name: Install Python dependencies in temporary virtualenv
+        run: |
+          if [ -d ".tmp/tools/my-avbroot-setup" ]; then
+            python3 -m venv .tmp/tools/my-avbroot-setup/.venv
+            .tmp/tools/my-avbroot-setup/.venv/bin/pip install tomlkit pydantic
+          fi
+    
       - name: Patch OTA
         shell: bash
         env:
