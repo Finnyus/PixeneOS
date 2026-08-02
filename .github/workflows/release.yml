@@ -185,13 +185,11 @@ jobs:
           echo "${{ secrets.OTA_KEY }}" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Install Python dependencies in temporary virtualenv
+      - name: Install Python dependencies globally
         run: |
-          if [ -d ".tmp/tools/my-avbroot-setup" ]; then
-            python3 -m venv .tmp/tools/my-avbroot-setup/.venv
-            .tmp/tools/my-avbroot-setup/.venv/bin/pip install tomlkit pydantic
-          fi
-    
+          python -m pip install --upgrade pip
+          python -m pip install tomlkit pydantic
+
       - name: Patch OTA
         shell: bash
         env:
@@ -202,6 +200,9 @@ jobs:
           PASSPHRASE_OTA: ${{ secrets.PASSPHRASE_OTA }}
         run: |
           echo -e "Running release script.."
+
+          # Force nested virtual environments created by main.sh to see our globally installed packages
+          export PYTHONPATH=$(python -c "import site; print(':'.join(site.getsitepackages()))")
 
           # Instead of running the script directly,
           # we source it to get the variables in the current shell and use them in the next steps by exporting them
