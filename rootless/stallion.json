@@ -1,7 +1,7 @@
 {
   "version": 2,
   "full": {
-    "location_ota": "https://github.com/pixincreate/PixeneOS/releases/download/2026072900/stallion-2026072900-rootless-32674d5.zip",
-    "location_csig": "https://github.com/pixincreate/PixeneOS/releases/download/2026072900/stallion-2026072900-rootless-32674d5.zip.csig"
+    "location_ota": "https://github.com/finnyus/PixeneOS/releases/download/2026072900/stallion-2026072900-rootless-32674d5.zip",
+    "location_csig": "https://github.com/finnyus/PixeneOS/releases/download/2026072900/stallion-2026072900-rootless-32674d5.zip.csig"
   }
 }
