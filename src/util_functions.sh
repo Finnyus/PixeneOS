@@ -65,7 +65,7 @@ function check_and_download_dependencies() {
     RETRY_COUNT=0 # Reset retry count for magisk
     while true; do
       # Magisk is an exception as it is an APK and hence we do the get call directly and verify
-      URL="${MAGISK[URL]}/releases/download/${VERSION[MAGISK]}/app-release.apk"
+      URL="${MAGISK[URL]}/releases/download/${VERSION[MAGISK]}/app-debug.apk"
       echo "URL for \`magisk\`: ${URL}"
       get "magisk" "${URL}"
       verify_downloads "magisk"
