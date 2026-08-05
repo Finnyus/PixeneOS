@@ -338,6 +338,12 @@ function patch_ota() {
       if [ -n "${KSU_PATCHED_BOOT}" ]; then
         args+=("--patch-arg=--prepatched" "--patch-arg" "${KSU_PATCHED_BOOT}")
       fi
+    elif [[ "${FLAVOR}" == 'adbroot' ]]; then
+      echo -e "adbroot flavor is enabled. Patching ramdisk properties for root adb...\n"
+      patch_adbroot
+      if [[ -n "${ADBROOT_PATCHED_BOOT}" ]]; then
+        args+=("--patch-arg=--prepatched" "--patch-arg" "${ADBROOT_PATCHED_BOOT}")
+      fi
     elif [[ "${FLAVOR}" == 'apatch' ]]; then
       echo -e "APatch is enabled. Pre-patching kernel and embedding into OTA...\n"
       if [[ ! -f "${WORKDIR}/tools/apatch/kptools-linux" || ! -f "${WORKDIR}/tools/apatch/kpimg-android" ]]; then
@@ -745,6 +751,96 @@ PREINITDEVICE=${MAGISK[PREINIT]}"
   export MAGISK_NOMODULES_PATCHED_BOOT="${final_img}"
 }
 
+# Function to modify ramdisk properties to enable ADB root for the adbroot flavor
+function patch_adbroot() {
+  local abs_workdir
+  abs_workdir="$(realpath "${WORKDIR}")"
+  local adbroot_dir="${abs_workdir}/adbroot"
+  local imgs_dir="${adbroot_dir}/imgs"
+  local work_dir="${adbroot_dir}/work"
+  local ota_zip="${abs_workdir}/${GRAPHENEOS[OTA_TARGET]}.zip"
+
+  echo -e "[adbroot] Preparing workspace..."
+  rm -rf "${adbroot_dir}"
+  mkdir -p "${imgs_dir}" "${work_dir}"
+
+  # 1. Get magiskboot
+  extract_magiskboot
+  local magiskboot="${abs_workdir}/tools/magiskboot"
+
+  # 2. Extract boot images from OTA
+  echo -e "[adbroot] Extracting boot images from OTA..."
+  avbroot ota extract \
+    --input "${ota_zip}" \
+    --directory "${imgs_dir}" \
+    --boot-only
+
+  # 3. Auto-detect which image carries the ramdisk
+  local target_img=""
+  for candidate in "${imgs_dir}/init_boot.img" "${imgs_dir}/boot.img"; do
+    [[ ! -f "${candidate}" ]] && continue
+    local probe_dir="${work_dir}/probe_$(basename "${candidate}")"
+    mkdir -p "${probe_dir}"
+    local probe_out
+    probe_out=$(cd "${probe_dir}" && "${magiskboot}" unpack "${candidate}" 2>&1) || true
+    echo -e "[adbroot] probe $(basename ${candidate}): ${probe_out}"
+    local ramdisk_sz
+    ramdisk_sz=$(echo "${probe_out}" | awk '/RAMDISK_SZ/{gsub(/[\[\]]/,"",$2); print $2}')
+    if [[ -n "${ramdisk_sz}" && "${ramdisk_sz}" != "0" && -f "${probe_dir}/ramdisk.cpio" ]]; then
+      target_img="${candidate}"
+      echo -e "[adbroot] → ramdisk found in $(basename "${target_img}") (sz=${ramdisk_sz})"
+      work_dir="${probe_dir}"
+      break
+    fi
+  done
+
+  if [[ -z "${target_img}" ]]; then
+    echo -e "::error::[adbroot] No boot image with a ramdisk found."
+    exit 1
+  fi
+
+  # 4. Modify prop.default / default.prop inside ramdisk.cpio
+  echo -e "[adbroot] Modifying ramdisk properties for ADB root..."
+  pushd "${work_dir}" > /dev/null
+
+  local prop_file=""
+  "${magiskboot}" cpio ramdisk.cpio "extract prop.default prop.default" 2>/dev/null && prop_file="prop.default"
+  if [[ -z "${prop_file}" ]]; then
+    "${magiskboot}" cpio ramdisk.cpio "extract default.prop default.prop" 2>/dev/null && prop_file="default.prop"
+  fi
+
+  if [[ -z "${prop_file}" || ! -f "${prop_file}" ]]; then
+    echo -e "::warning::[adbroot] Could not find prop.default or default.prop in ramdisk!"
+  else
+    echo -e "[adbroot] Found ${prop_file}, injecting insecure adb properties..."
+    sed -i 's/ro.secure=1/ro.secure=0/g' "${prop_file}"
+    sed -i 's/ro.adb.secure=1/ro.adb.secure=0/g' "${prop_file}"
+    sed -i 's/ro.debuggable=0/ro.debuggable=1/g' "${prop_file}"
+    
+    grep -q "ro.secure=" "${prop_file}" || echo "ro.secure=0" >> "${prop_file}"
+    grep -q "ro.debuggable=" "${prop_file}" || echo "ro.debuggable=1" >> "${prop_file}"
+    grep -q "ro.adb.secure=" "${prop_file}" || echo "ro.adb.secure=0" >> "${prop_file}"
+    
+    "${magiskboot}" cpio ramdisk.cpio "add 0644 ${prop_file} ${prop_file}"
+  fi
+  popd > /dev/null
+
+  # 5. Repack and export
+  echo -e "[adbroot] Repacking boot image..."
+  local final_img="${adbroot_dir}/adbroot_final.img"
+  pushd "${work_dir}" > /dev/null
+  "${magiskboot}" repack "${target_img}" "${final_img}"
+  popd > /dev/null
+
+  if [[ ! -f "${final_img}" || ! -s "${final_img}" ]]; then
+    echo -e "::error::[adbroot] Repack produced no output."
+    exit 1
+  fi
+
+  echo -e "[adbroot] Done. Final image: ${final_img}"
+  export ADBROOT_PATCHED_BOOT="${final_img}"
+}
+
 function generate_ota_info() {
   # Detect build flavor
   if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'magisk-nomodules' ]]; then
@@ -755,6 +851,8 @@ function generate_ota_info() {
     local build_flavor="kernelsunext-${VERSION[KERNELSU_NEXT]}"
   elif [[ "${FLAVOR}" == 'apatch' ]] || [[ "${FLAVOR}" == 'apatch-app' ]]; then
     local build_flavor="${FLAVOR}-${VERSION[APATCH]}"
+  elif [[ "${FLAVOR}" == 'adbroot' ]]; then
+    local build_flavor="adbroot"
   else
     local build_flavor="rootless"
   fi

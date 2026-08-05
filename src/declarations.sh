@@ -97,7 +97,7 @@ ADDITIONALS[AVBROOT]="${ADDITIONALS[AVBROOT]:-true}"                   # Android
 ADDITIONALS[CUSTOTA_TOOL]="${ADDITIONALS[CUSTOTA_TOOL]:-true}"         # Custom OTA Tool
 ADDITIONALS[MY_AVBROOT_SETUP]="${ADDITIONALS[MY_AVBROOT_SETUP]:-true}" # My AVBRoot setup
 
-FLAVOR="${FLAVOR:-rootless}"                     # Build flavor: rootless, magisk, or kernelsu
+FLAVOR="${FLAVOR:-rootless}"                     # Build flavor: rootless, magisk, kernelsu, or adbroot
 ADDITIONALS[RETRY]="${ADDITIONALS[RETRY]:-true}" # Auto download signatures
 
 # Outputs

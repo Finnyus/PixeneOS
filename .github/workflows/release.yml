@@ -23,6 +23,7 @@ on:
           - kernelsunext
           - apatch
           - apatch-app
+          - adbroot
         default: rootless
       magisk-preinit-device:
         description: Magisk preinit device. For example, "sda8", "sda15" etc.,
