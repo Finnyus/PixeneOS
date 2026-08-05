@@ -22,6 +22,14 @@ function download_kernelsu_tools() {
   if [ ! -f "${ksudBin}" ]; then
     echo "Downloading ksud..."
     local ksudUrl="https://github.com/tiann/KernelSU/releases/download/v${ksuVer}/ksud-x86_64-unknown-linux-musl"
+    
+    local http_code=$(curl -sL -I -o /dev/null -w "%{http_code}" "${ksudUrl}")
+    if [ "${http_code}" != "200" ] && [ "${http_code}" != "302" ]; then
+      echo "KSU v${ksuVer} does not have Linux ksud binary. Falling back to v3.2.1..."
+      ksuVer="3.2.1"
+      ksudUrl="https://github.com/tiann/KernelSU/releases/download/v${ksuVer}/ksud-x86_64-unknown-linux-musl"
+    fi
+
     curl --fail -sLo "${ksudBin}" "${ksudUrl}"
     chmod +x "${ksudBin}"
     echo "ksud downloaded successfully."
