@@ -47,8 +47,10 @@ VERSION[KERNELPATCH]="${VERSION[KERNELPATCH]:-0.13.3}"
 
 # Magisk
 MAGISK[PREINIT]="${MAGISK_PREINIT:-}"
-if [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'magisk-nomodules' ]]; then
+if [[ "${FLAVOR}" == 'magisk-pixincreate' ]]; then
   MAGISK[REPOSITORY]="pixincreate/Magisk"
+elif [[ "${FLAVOR}" == 'magisk-nomodules' ]]; then
+  MAGISK[REPOSITORY]="Finnyus/Magisk"
 else
   MAGISK[REPOSITORY]="topjohnwu/Magisk"
 fi
@@ -97,7 +99,7 @@ ADDITIONALS[AVBROOT]="${ADDITIONALS[AVBROOT]:-true}"                   # Android
 ADDITIONALS[CUSTOTA_TOOL]="${ADDITIONALS[CUSTOTA_TOOL]:-true}"         # Custom OTA Tool
 ADDITIONALS[MY_AVBROOT_SETUP]="${ADDITIONALS[MY_AVBROOT_SETUP]:-true}" # My AVBRoot setup
 
-FLAVOR="${FLAVOR:-rootless}"                     # Build flavor: rootless, magisk, kernelsu, or adbroot
+FLAVOR="${FLAVOR:-rootless}"                     # Build flavor: rootless, magisk, magisk-pixincreate, magisk-nomodules, kernelsu, kernelsunext, apatch, apatch-app
 ADDITIONALS[RETRY]="${ADDITIONALS[RETRY]:-true}" # Auto download signatures
 
 # Outputs
