@@ -62,7 +62,7 @@ function check_and_download_dependencies() {
   done
 
   # Retry logic for magisk
-  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'kernelsu' ]] || [[ "${FLAVOR}" == 'kernelsunext' ]]; then
+  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'magisk-nomodules' ]] || [[ "${FLAVOR}" == 'kernelsu' ]] || [[ "${FLAVOR}" == 'kernelsunext' ]]; then
     RETRY_COUNT=0 # Reset retry count for magisk
     while true; do
       # Magisk is an exception as it is an APK and hence we do the get call directly and verify
@@ -324,6 +324,11 @@ function patch_ota() {
       echo -e "Magisk is enabled. Modifying the setup script...\n"
       args+=("--patch-arg=--magisk" "--patch-arg" "${magisk_path}")
       args+=("--patch-arg=--magisk-preinit-device" "--patch-arg" "${MAGISK[PREINIT]}")
+    elif [[ "${FLAVOR}" == 'magisk-nomodules' ]]; then
+      echo -e "Magisk (no-modules) is enabled. Patching boot ramdisk to disable all modules...\n"
+      patch_magisk_nomodules
+      args+=("--patch-arg=--magisk" "--patch-arg" "${magisk_path}")
+      args+=("--patch-arg=--magisk-preinit-device" "--patch-arg" "${MAGISK[PREINIT]}")
     elif [[ "${FLAVOR}" == 'kernelsu' ]] || [[ "${FLAVOR}" == 'kernelsunext' ]]; then
       echo -e "${FLAVOR} is enabled. Modifying the setup script...\n"
       
@@ -577,9 +582,111 @@ function make_directories() {
     "${WORKDIR}/tools"
 }
 
+# Function to patch the boot image ramdisk so that all Magisk modules are disabled on boot.
+# It uses magiskboot (bundled inside the Magisk APK) to unpack the ramdisk, inject a
+# post-fs-data.d hook that creates a `disable` marker in every module directory, then repacks.
+function patch_magisk_nomodules() {
+  local abs_workdir
+  abs_workdir="$(realpath "${WORKDIR}")"
+  local magisk_apk="${abs_workdir}/modules/magisk.apk"
+  local nomodules_dir="${abs_workdir}/magisk_nomodules"
+  local ramdisk_dir="${nomodules_dir}/ramdisk"
+
+  echo -e "[magisk-nomodules] Preparing ramdisk injection directory..."
+  rm -rf "${nomodules_dir}"
+  mkdir -p "${ramdisk_dir}"
+
+  # Extract magiskboot from the Magisk APK
+  echo -e "[magisk-nomodules] Extracting magiskboot from Magisk APK..."
+  unzip -qo "${magisk_apk}" 'lib/x86_64/libmagiskboot.so' -d "${nomodules_dir}" 2>/dev/null || \
+    unzip -qo "${magisk_apk}" 'lib/arm64-v8a/libmagiskboot.so' -d "${nomodules_dir}" 2>/dev/null
+
+  # Locate the extracted binary and copy as magiskboot
+  local magiskboot_bin
+  magiskboot_bin="$(find "${nomodules_dir}/lib" -name 'libmagiskboot.so' | head -1)"
+  if [[ -z "${magiskboot_bin}" ]]; then
+    echo -e "::error::[magisk-nomodules] magiskboot not found inside Magisk APK."
+    exit 1
+  fi
+  cp "${magiskboot_bin}" "${nomodules_dir}/magiskboot"
+  chmod +x "${nomodules_dir}/magiskboot"
+
+  # Find the boot image extracted by avbroot
+  local extracts_dir="${abs_workdir}/extracted/extracts"
+  if [[ ! -f "${extracts_dir}/boot.img" ]]; then
+    echo -e "::error::[magisk-nomodules] boot.img not found in ${extracts_dir}."
+    exit 1
+  fi
+
+  cp "${extracts_dir}/boot.img" "${nomodules_dir}/boot.img"
+  pushd "${nomodules_dir}" > /dev/null
+
+  echo -e "[magisk-nomodules] Unpacking ramdisk..."
+  ./magiskboot unpack boot.img
+
+  if [[ ! -f "ramdisk.cpio" ]]; then
+    echo -e "::error::[magisk-nomodules] ramdisk.cpio not found after unpack."
+    popd > /dev/null
+    exit 1
+  fi
+
+  # Extract the cpio to ramdisk/ so we can modify its contents
+  mkdir -p "${ramdisk_dir}"
+  pushd "${ramdisk_dir}" > /dev/null
+  cpio -id < "${nomodules_dir}/ramdisk.cpio" 2>/dev/null || true
+  popd > /dev/null
+
+  # Create the post-fs-data.d directory if absent (Magisk guarantees it exists, but be safe)
+  local postfs_dir="${ramdisk_dir}/overlay.d/sbin"
+  mkdir -p "${ramdisk_dir}/overlay.d"
+
+  # Inject the disable-all-modules script into overlay.d
+  # Magisk runs scripts in overlay.d/sbin at post-fs-data stage, but the simplest
+  # portable hook is a post-fs-data.d script placed at /data/adb/post-fs-data.d/
+  # We instead write a script that will be executed during early-init via overlay.d.
+  local disable_script="${ramdisk_dir}/overlay.d/10-disable-modules.sh"
+  cat > "${disable_script}" <<'DISABLE_SCRIPT'
+#!/system/bin/sh
+# Injected by PixeneOS magisk-nomodules build.
+# Touches the 'disable' marker for every installed Magisk module so none of them load.
+MODULES_DIR="/data/adb/modules"
+if [ -d "${MODULES_DIR}" ]; then
+  for mod_dir in "${MODULES_DIR}"/*/; do
+    [ -d "${mod_dir}" ] && touch "${mod_dir}/disable"
+  done
+fi
+DISABLE_SCRIPT
+  chmod 0755 "${disable_script}"
+
+  echo -e "[magisk-nomodules] Repacking ramdisk..."
+  pushd "${ramdisk_dir}" > /dev/null
+  find . | cpio -oH newc > "${nomodules_dir}/ramdisk.cpio" 2>/dev/null
+  popd > /dev/null
+
+  echo -e "[magisk-nomodules] Repacking boot image..."
+  pushd "${nomodules_dir}" > /dev/null
+  ./magiskboot repack boot.img new-boot.img
+  popd > /dev/null
+
+  local patched_boot="${nomodules_dir}/new-boot.img"
+  if [[ ! -f "${patched_boot}" || ! -s "${patched_boot}" ]]; then
+    echo -e "::error::[magisk-nomodules] magiskboot repack did not produce new-boot.img."
+    popd > /dev/null
+    exit 1
+  fi
+
+  # Replace the extracted boot.img so avbroot uses the modified one via --prepatched is NOT used here;
+  # instead we still pass --magisk normally (Magisk handles its own init injection).
+  # The disable script will run after Magisk's own post-fs-data hook.
+  cp "${patched_boot}" "${extracts_dir}/boot.img"
+  popd > /dev/null
+
+  echo -e "[magisk-nomodules] Ramdisk injection complete."
+}
+
 function generate_ota_info() {
   # Detect build flavor
-  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]]; then
+  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'magisk-nomodules' ]]; then
     local build_flavor="${FLAVOR}-${VERSION[MAGISK]}"
   elif [[ "${FLAVOR}" == 'kernelsu' ]]; then
     local build_flavor="kernelsu-${VERSION[KERNELSU]}"

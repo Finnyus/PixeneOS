@@ -47,7 +47,7 @@ VERSION[KERNELPATCH]="${VERSION[KERNELPATCH]:-0.13.3}"
 
 # Magisk
 MAGISK[PREINIT]="${MAGISK_PREINIT:-}"
-if [[ "${FLAVOR}" == 'magisk-pixincreate' ]]; then
+if [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'magisk-nomodules' ]]; then
   MAGISK[REPOSITORY]="pixincreate/Magisk"
 else
   MAGISK[REPOSITORY]="topjohnwu/Magisk"
