@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "full": {
+    "location_ota": "https://github.com/Finnyus/PixeneOS/releases/download/2026072900/stallion-2026072900-apatch-0.13.3-7dcbca9.zip",
+    "location_csig": "https://github.com/Finnyus/PixeneOS/releases/download/2026072900/stallion-2026072900-apatch-0.13.3-7dcbca9.zip.csig"
+  }
+}
