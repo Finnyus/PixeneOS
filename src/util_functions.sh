@@ -214,16 +214,14 @@ function patch_kernel_with_apatch() {
   cp "${extracts_dir}/boot.img" "${boot_dir}/boot.img"
   pushd "${boot_dir}" > /dev/null
 
-  echo -e "Unpacking boot.img with kptools (decompresses kernel automatically)..."
-  "${kptools}" unpack boot.img
+  echo -e "Unpacking boot.img with apatch_boot.py..."
+  python3 "${abs_workdir}/../src/apatch_boot.py" extract boot.img kernel-b
 
-  if [[ ! -f "kernel" ]]; then
-    echo -e "::error::kptools unpack did not produce a 'kernel' file."
+  if [[ ! -f "kernel-b" ]]; then
+    echo -e "::error::apatch_boot.py did not produce a 'kernel-b' file."
     popd > /dev/null
     exit 1
   fi
-
-  mv kernel kernel-b
 
   echo -e "Patching kernel with kptools ${VERSION[APATCH]}..."
   "${kptools}" -p \
@@ -238,8 +236,8 @@ function patch_kernel_with_apatch() {
     exit 1
   fi
 
-  echo -e "Repacking boot.img with kptools..."
-  "${kptools}" repack boot.img
+  echo -e "Repacking boot.img with apatch_boot.py..."
+  python3 "${abs_workdir}/../src/apatch_boot.py" repack boot.img kernel new-boot.img
 
   popd > /dev/null
 
