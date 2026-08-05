@@ -6,22 +6,39 @@
 # Function to download ksud and the required kernel module
 function download_kernelsu_tools() {
   local ksudBin="${WORKDIR}/tools/ksud"
-  local ksuVer="${VERSION[KSUD]#v}"
-  local ksuOriginalVer="${VERSION[KERNELSU]#v}"
+  if [ "${FLAVOR}" == "kernelsunext" ]; then
+    local ksuVer="${VERSION[KSUD]#v}"
+    local ksuOriginalVer="${VERSION[KERNELSU_NEXT]#v}"
+    local ksuRepo="${KERNELSU_NEXT[REPOSITORY]}"
+  else
+    local ksuVer="${VERSION[KSUD]#v}"
+    local ksuOriginalVer="${VERSION[KERNELSU]#v}"
+    local ksuRepo="${KERNELSU[REPOSITORY]}"
+  fi
   
   if [ "${ksuVer}" == "latest" ]; then
-    ksuVer=$(curl -sL -I -o /dev/null -w '%{url_effective}' "https://github.com/tiann/KernelSU/releases/latest" 2>/dev/null | sed 's/.*\/tag\/v\?//;')
+    ksuVer=$(curl -sL -I -o /dev/null -w '%{url_effective}' "https://github.com/${ksuRepo}/releases/latest" 2>/dev/null | sed 's/.*\/tag\/v\?//;')
     VERSION[KSUD]="${ksuVer}"
   fi
   
   if [ "${ksuOriginalVer}" == "latest" ]; then
-    ksuOriginalVer=$(curl -sL -I -o /dev/null -w '%{url_effective}' "https://github.com/tiann/KernelSU/releases/latest" 2>/dev/null | sed 's/.*\/tag\/v\?//;')
-    VERSION[KERNELSU]="${ksuOriginalVer}"
+    ksuOriginalVer=$(curl -sL -I -o /dev/null -w '%{url_effective}' "https://github.com/${ksuRepo}/releases/latest" 2>/dev/null | sed 's/.*\/tag\/v\?//;')
+    if [ "${FLAVOR}" == "kernelsunext" ]; then
+      VERSION[KERNELSU_NEXT]="${ksuOriginalVer}"
+    else
+      VERSION[KERNELSU]="${ksuOriginalVer}"
+    fi
   fi
 
   if [ ! -f "${ksudBin}" ]; then
     echo "Downloading ksud..."
-    local ksudUrl="https://github.com/tiann/KernelSU/releases/download/v${ksuVer}/ksud-x86_64-unknown-linux-musl"
+  if [ "${FLAVOR}" == "kernelsunext" ]; then
+    local ksuRepo="${KERNELSU_NEXT[REPOSITORY]}"
+    local ksudUrl="https://github.com/${ksuRepo}/releases/download/v${ksuVer}/ksud-x86_64-unknown-linux-musl"
+    local http_code=$(curl -sL -I -o /dev/null -w "%{http_code}" "${ksudUrl}")
+  else
+    local ksuRepo="${KERNELSU[REPOSITORY]}"
+    local ksudUrl="https://github.com/${ksuRepo}/releases/download/v${ksuVer}/ksud-x86_64-unknown-linux-musl"
     
     local http_code=$(curl -sL -I -o /dev/null -w "%{http_code}" "${ksudUrl}")
     if [ "${http_code}" != "200" ] && [ "${http_code}" != "302" ]; then
@@ -29,6 +46,7 @@ function download_kernelsu_tools() {
       ksuVer="3.2.1"
       ksudUrl="https://github.com/tiann/KernelSU/releases/download/v${ksuVer}/ksud-x86_64-unknown-linux-musl"
     fi
+  fi
 
     curl --fail -sLo "${ksudBin}" "${ksudUrl}"
     chmod +x "${ksudBin}"
@@ -150,9 +168,15 @@ function inject_kernelsu_into_boot() {
 
   # Download the specific .ko module for this KMI
   local koTarget="${WORKDIR}/modules/ksu_module.ko"
-  local ksuOriginalVer="${VERSION[KERNELSU]#v}"
-  echo "Downloading KernelSU module for KMI: ${kmi}..."
-  curl -sLo "${koTarget}" "https://github.com/tiann/KernelSU/releases/download/v${ksuOriginalVer}/${kmi}_kernelsu.ko" || {
+  if [ "${FLAVOR}" == "kernelsunext" ]; then
+    local ksuOriginalVer="${VERSION[KERNELSU_NEXT]#v}"
+    local ksuRepo="${KERNELSU_NEXT[REPOSITORY]}"
+  else
+    local ksuOriginalVer="${VERSION[KERNELSU]#v}"
+    local ksuRepo="${KERNELSU[REPOSITORY]}"
+  fi
+  echo "Downloading module for KMI: ${kmi}..."
+  curl -sLo "${koTarget}" "https://github.com/${ksuRepo}/releases/download/v${ksuOriginalVer}/${kmi}_kernelsu.ko" || {
     echo "Warning: Failed to download .ko module, ksud might fail or use internal one."
     rm -f "${koTarget}"
   }

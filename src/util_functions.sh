@@ -62,7 +62,7 @@ function check_and_download_dependencies() {
   done
 
   # Retry logic for magisk
-  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'kernelsu' ]]; then
+  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'kernelsu' ]] || [[ "${FLAVOR}" == 'kernelsunext' ]]; then
     RETRY_COUNT=0 # Reset retry count for magisk
     while true; do
       # Magisk is an exception as it is an APK and hence we do the get call directly and verify
@@ -75,10 +75,10 @@ function check_and_download_dependencies() {
     done
   fi
 
-  if [[ "${FLAVOR}" == 'kernelsu' ]]; then
+  if [[ "${FLAVOR}" == 'kernelsu' ]] || [[ "${FLAVOR}" == 'kernelsunext' ]]; then
     download_kernelsu_tools
   elif [[ "${FLAVOR}" == 'apatch' ]]; then
-    local kp_version="${VERSION[APATCH]}"
+    local kp_version="${VERSION[KERNELPATCH]}"
     local kp_base_url="${APATCH[URL]}/releases/download/${kp_version}"
     mkdir -p "${WORKDIR}/tools/apatch"
     for kp_asset in "kptools-linux" "kpimg-android"; do
@@ -214,30 +214,32 @@ function patch_kernel_with_apatch() {
   cp "${extracts_dir}/boot.img" "${boot_dir}/boot.img"
   pushd "${boot_dir}" > /dev/null
 
-  echo -e "Unpacking boot.img with apatch_boot.py..."
-  python3 "${abs_workdir}/../src/apatch_boot.py" extract boot.img kernel-b
+  echo -e "Unpacking boot.img with kptools (decompresses kernel automatically)..."
+  "${kptools}" unpack boot.img
 
-  if [[ ! -f "kernel-b" ]]; then
-    echo -e "::error::apatch_boot.py did not produce a 'kernel-b' file."
+  if [[ ! -f "kernel" ]]; then
+    echo -e "::error::kptools unpack did not produce a 'kernel' file."
     popd > /dev/null
     exit 1
   fi
 
-  echo -e "Patching kernel with kptools ${VERSION[APATCH]}..."
+  echo -e "Patching kernel with kptools ${VERSION[KERNELPATCH]}..."
   "${kptools}" -p \
-    --image kernel-b \
+    --image kernel \
     --skey "${APATCH[SUPERKEY]}" \
     --kpimg "${kpimg}" \
-    --out kernel
+    --out kernel-patched
 
-  if [[ ! -f "kernel" || ! -s "kernel" ]]; then
+  if [[ ! -f "kernel-patched" || ! -s "kernel-patched" ]]; then
     echo -e "::error::kptools -p did not produce a patched kernel."
     popd > /dev/null
     exit 1
   fi
+  
+  mv kernel-patched kernel
 
-  echo -e "Repacking boot.img with apatch_boot.py..."
-  python3 "${abs_workdir}/../src/apatch_boot.py" repack boot.img kernel new-boot.img
+  echo -e "Repacking boot.img with kptools..."
+  "${kptools}" repack boot.img
 
   popd > /dev/null
 
@@ -322,8 +324,9 @@ function patch_ota() {
       echo -e "Magisk is enabled. Modifying the setup script...\n"
       args+=("--patch-arg=--magisk" "--patch-arg" "${magisk_path}")
       args+=("--patch-arg=--magisk-preinit-device" "--patch-arg" "${MAGISK[PREINIT]}")
-    elif [[ "${FLAVOR}" == 'kernelsu' ]]; then
-      echo -e "KernelSU is enabled. Preparing patched boot image...\n"
+    elif [[ "${FLAVOR}" == 'kernelsu' ]] || [[ "${FLAVOR}" == 'kernelsunext' ]]; then
+      echo -e "${FLAVOR} is enabled. Modifying the setup script...\n"
+      
       extract_magiskboot
       inject_kernelsu_into_boot
       if [ -n "${KSU_PATCHED_BOOT}" ]; then
@@ -580,6 +583,8 @@ function generate_ota_info() {
     local build_flavor="${FLAVOR}-${VERSION[MAGISK]}"
   elif [[ "${FLAVOR}" == 'kernelsu' ]]; then
     local build_flavor="kernelsu-${VERSION[KERNELSU]}"
+  elif [[ "${FLAVOR}" == 'kernelsunext' ]]; then
+    local build_flavor="kernelsunext-${VERSION[KERNELSU_NEXT]}"
   elif [[ "${FLAVOR}" == 'apatch' ]] || [[ "${FLAVOR}" == 'apatch-app' ]]; then
     local build_flavor="${FLAVOR}-${VERSION[APATCH]}"
   else

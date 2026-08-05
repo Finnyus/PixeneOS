@@ -19,6 +19,7 @@ on:
           - magisk
           - magisk-pixincreate
           - kernelsu
+          - kernelsunext
           - apatch
           - apatch-app
         default: rootless
@@ -150,7 +151,7 @@ jobs:
               done
 
               # Check if valid_build is supported
-              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "magisk-pixincreate" ]] || [[ "$valid_build" == "rootless" ]] || [[ "$valid_build" == "kernelsu" ]] || [[ "$valid_build" == "apatch" ]] || [[ "$valid_build" == "apatch-app" ]]; then
+              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "magisk-pixincreate" ]] || [[ "$valid_build" == "rootless" ]] || [[ "$valid_build" == "kernelsu" ]] || [[ "$valid_build" == "kernelsunext" ]] || [[ "$valid_build" == "apatch" ]] || [[ "$valid_build" == "apatch-app" ]]; then
                 echo -e "Proceeding with build to create missing assets..."
               else
                 echo -e "::error::Asset with \`$build_flavor\` flavor already exists!"
@@ -241,11 +242,11 @@ jobs:
         if: github.event.inputs.release-type != 'build-only'
         run: |
           CURRENT_COMMIT=$(git rev-parse --short HEAD)
-          FLAVOR=("magisk" "magisk-pixincreate" "rootless" "kernelsu" "apatch" "apatch-app")
+          FLAVOR=("magisk" "magisk-pixincreate" "rootless" "kernelsu" "kernelsunext" "apatch" "apatch-app")
           flavor=${{ github.event.inputs.flavor || 'rootless' }}
 
           # Create directories if they don't exist
-          mkdir -p "magisk" "magisk-pixincreate" "rootless" "kernelsu" "apatch" "apatch-app"
+          mkdir -p "magisk" "magisk-pixincreate" "rootless" "kernelsu" "kernelsunext" "apatch" "apatch-app"
 
           # Switch to gh-pages branch
           git checkout gh-pages
@@ -256,6 +257,8 @@ jobs:
             TARGET_FILE="magisk-pixincreate/${{ env.DEVICE_NAME }}.json"
           elif [ "${flavor}" = "magisk" ] || grep -q magisk "${{ env.DEVICE_NAME }}.json"; then
             TARGET_FILE="magisk/${{ env.DEVICE_NAME }}.json"
+          elif [ "${flavor}" = "kernelsunext" ] || grep -q kernelsunext "${{ env.DEVICE_NAME }}.json"; then
+            TARGET_FILE="kernelsunext/${{ env.DEVICE_NAME }}.json"
           elif [ "${flavor}" = "kernelsu" ] || grep -q kernelsu "${{ env.DEVICE_NAME }}.json"; then
             TARGET_FILE="kernelsu/${{ env.DEVICE_NAME }}.json"
           elif [ "${flavor}" = "apatch-app" ] || grep -q apatch-app "${{ env.DEVICE_NAME }}.json"; then
