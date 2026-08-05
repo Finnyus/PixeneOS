@@ -17,7 +17,9 @@ on:
         options:
           - rootless
           - magisk
+          - magisk-pixincreate
           - kernelsu
+          - apatch
         default: rootless
       magisk-preinit-device:
         description: Magisk preinit device. For example, "sda8", "sda15" etc.,
@@ -57,7 +59,7 @@ jobs:
           flavor=${{ github.event.inputs.flavor }}
           magisk_preinit_device=${{ github.event.inputs.magisk-preinit-device }}
 
-          if [ "$flavor" == "magisk" ] && [ -z "$magisk_preinit_device" ]; then
+          if [[ "$flavor" == magisk* ]] && [ -z "$magisk_preinit_device" ]; then
             echo -e "::error:: magisk-preinit-device is required when flavor is magisk."
             exit 1
           fi
@@ -147,7 +149,7 @@ jobs:
               done
 
               # Check if valid_build is supported
-              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "rootless" ]] || [[ "$valid_build" == "kernelsu" ]]; then
+              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "magisk-pixincreate" ]] || [[ "$valid_build" == "rootless" ]] || [[ "$valid_build" == "kernelsu" ]] || [[ "$valid_build" == "apatch" ]]; then
                 echo -e "Proceeding with build to create missing assets..."
               else
                 echo -e "::error::Asset with \`$build_flavor\` flavor already exists!"
@@ -197,6 +199,7 @@ jobs:
         shell: bash
         env:
           FLAVOR: ${{ github.event.inputs.flavor || 'rootless' }}
+          APATCH_SUPER_KEY: ${{ secrets.APATCH_SUPER_KEY }}
           CLEANUP: true
           MAGISK_PREINIT: ${{ github.event.inputs.magisk-preinit-device }}
           PASSPHRASE_AVB: ${{ secrets.PASSPHRASE_AVB }}
@@ -237,21 +240,25 @@ jobs:
         if: github.event.inputs.release-type != 'build-only'
         run: |
           CURRENT_COMMIT=$(git rev-parse --short HEAD)
-          FLAVOR=("magisk" "rootless" "kernelsu")
+          FLAVOR=("magisk" "magisk-pixincreate" "rootless" "kernelsu" "apatch")
           flavor=${{ github.event.inputs.flavor || 'rootless' }}
 
           # Create directories if they don't exist
-          mkdir -p "magisk" "rootless" "kernelsu"
+          mkdir -p "magisk" "magisk-pixincreate" "rootless" "kernelsu" "apatch"
 
           # Switch to gh-pages branch
           git checkout gh-pages
           echo -e "Updating Configs for the new release..."
 
           # Select the appropriate directory for the JSON configuration
-          if [ "${flavor}" = "magisk" ] || grep -q magisk "${{ env.DEVICE_NAME }}.json"; then
+          if [ "${flavor}" = "magisk-pixincreate" ] || grep -q magisk-pixincreate "${{ env.DEVICE_NAME }}.json"; then
+            TARGET_FILE="magisk-pixincreate/${{ env.DEVICE_NAME }}.json"
+          elif [ "${flavor}" = "magisk" ] || grep -q magisk "${{ env.DEVICE_NAME }}.json"; then
             TARGET_FILE="magisk/${{ env.DEVICE_NAME }}.json"
           elif [ "${flavor}" = "kernelsu" ] || grep -q kernelsu "${{ env.DEVICE_NAME }}.json"; then
             TARGET_FILE="kernelsu/${{ env.DEVICE_NAME }}.json"
+          elif [ "${flavor}" = "apatch" ] || grep -q apatch "${{ env.DEVICE_NAME }}.json"; then
+            TARGET_FILE="apatch/${{ env.DEVICE_NAME }}.json"
           else
             TARGET_FILE="rootless/${{ env.DEVICE_NAME }}.json"
           fi

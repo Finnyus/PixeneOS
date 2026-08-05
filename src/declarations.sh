@@ -8,6 +8,7 @@ declare -A KEYS
 declare -A MAGISK
 declare -A OUTPUTS
 declare -A VERSION
+declare -A APATCH
 
 # Build Specifications
 ARCH="x86_64-unknown-linux-gnu" # for Linux
@@ -39,12 +40,21 @@ VERSION[MSD]="${VERSION[MSD]:-2.4}"
 VERSION[OEMUNLOCKONBOOT]="${VERSION[OEMUNLOCKONBOOT]:-1.4}"
 VERSION[KSUD]="${VERSION[KSUD]:-latest}"
 VERSION[KERNELSU]="${VERSION[KERNELSU]:-latest}"
+VERSION[APATCH]="${VERSION[APATCH]:-0.10.7}"
 
 # Magisk
 MAGISK[PREINIT]="${MAGISK_PREINIT:-}"
-#MAGISK[REPOSITORY]="${USER}/Magisk"
-MAGISK[REPOSITORY]="pixincreate/Magisk"
+if [[ "${FLAVOR}" == 'magisk-pixincreate' ]]; then
+  MAGISK[REPOSITORY]="pixincreate/Magisk"
+else
+  MAGISK[REPOSITORY]="topjohnwu/Magisk"
+fi
 MAGISK[URL]="${DOMAIN}/${MAGISK[REPOSITORY]}"
+
+# APatch
+APATCH[REPOSITORY]="bmax121/APatch"
+APATCH[URL]="${DOMAIN}/${APATCH[REPOSITORY]}"
+APATCH[SUPERKEY]="${APATCH_SUPER_KEY:-}"
 
 # Keys
 KEYS[AVB]="${KEYS[AVB]:-avb.key}"

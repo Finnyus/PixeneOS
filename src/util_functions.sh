@@ -62,7 +62,7 @@ function check_and_download_dependencies() {
   done
 
   # Retry logic for magisk
-  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'kernelsu' ]]; then
+  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]] || [[ "${FLAVOR}" == 'kernelsu' ]]; then
     RETRY_COUNT=0 # Reset retry count for magisk
     while true; do
       # Magisk is an exception as it is an APK and hence we do the get call directly and verify
@@ -77,6 +77,25 @@ function check_and_download_dependencies() {
 
   if [[ "${FLAVOR}" == 'kernelsu' ]]; then
     download_kernelsu_tools
+  elif [[ "${FLAVOR}" == 'apatch' ]]; then
+    local kp_version="${VERSION[APATCH]}"
+    local kp_base_url="${APATCH[URL]}/releases/download/${kp_version}"
+    mkdir -p "${WORKDIR}/tools/apatch"
+    for kp_asset in "kptools-linux" "kpimg-android"; do
+      if [[ -f "${WORKDIR}/tools/apatch/${kp_asset}" ]]; then
+        echo -e "\`${kp_asset}\` already exists in \`${WORKDIR}/tools/apatch/\`."
+        continue
+      fi
+      echo "Downloading ${kp_asset} for APatch..."
+      curl --fail -sLo "${WORKDIR}/tools/apatch/${kp_asset}" "${kp_base_url}/${kp_asset}"
+      chmod +x "${WORKDIR}/tools/apatch/${kp_asset}"
+      if [[ -f "${WORKDIR}/tools/apatch/${kp_asset}" && -s "${WORKDIR}/tools/apatch/${kp_asset}" ]]; then
+        echo -e "\`${kp_asset}\` verified.\n"
+      else
+        echo -e "Error: \`${kp_asset}\` download failed or is empty."
+        exit 1
+      fi
+    done
   fi
 }
 
@@ -161,6 +180,79 @@ function generate_keys() {
   base64_encode
 }
 
+# Function to patch the Android kernel with APatch using kptools.
+function patch_kernel_with_apatch() {
+  local abs_workdir
+  abs_workdir="$(realpath "${WORKDIR}")"
+  local apatch_dir="${abs_workdir}/tools/apatch"
+  local kptools="${apatch_dir}/kptools-linux"
+  local kpimg="${apatch_dir}/kpimg-android"
+  local extracts_dir="${abs_workdir}/extracted/extracts"
+  local boot_dir="${abs_workdir}/apatch_boot"
+
+  echo -e "Preparing APatch kernel patch environment..."
+  mkdir -p "${boot_dir}"
+
+  if [[ -z "${APATCH[SUPERKEY]}" ]]; then
+    echo -e "::error::APATCH_SUPER_KEY is not set. Please add it as a GitHub Secret."
+    exit 1
+  fi
+  if [[ ${#APATCH[SUPERKEY]} -lt 8 || ${#APATCH[SUPERKEY]} -gt 63 ]]; then
+    echo -e "::error::APATCH_SUPERKEY must be between 8 and 63 characters."
+    exit 1
+  fi
+  if [[ ! "${APATCH[SUPERKEY]}" =~ ^[a-zA-Z0-9]+$ ]]; then
+    echo -e "::error::APATCH_SUPERKEY must only contain alphanumeric characters (no special chars)."
+    exit 1
+  fi
+
+  if [[ ! -f "${extracts_dir}/boot.img" ]]; then
+    echo -e "::error::Could not find boot.img in ${extracts_dir}."
+    exit 1
+  fi
+
+  cp "${extracts_dir}/boot.img" "${boot_dir}/boot.img"
+  pushd "${boot_dir}" > /dev/null
+
+  echo -e "Unpacking boot.img with kptools (decompresses kernel automatically)..."
+  "${kptools}" unpack boot.img
+
+  if [[ ! -f "kernel" ]]; then
+    echo -e "::error::kptools unpack did not produce a 'kernel' file."
+    popd > /dev/null
+    exit 1
+  fi
+
+  mv kernel kernel-b
+
+  echo -e "Patching kernel with kptools ${VERSION[APATCH]}..."
+  "${kptools}" -p \
+    --image kernel-b \
+    --skey "${APATCH[SUPERKEY]}" \
+    --kpimg "${kpimg}" \
+    --out kernel
+
+  if [[ ! -f "kernel" || ! -s "kernel" ]]; then
+    echo -e "::error::kptools -p did not produce a patched kernel."
+    popd > /dev/null
+    exit 1
+  fi
+
+  echo -e "Repacking boot.img with kptools..."
+  "${kptools}" repack boot.img
+
+  popd > /dev/null
+
+  local patched_boot="${boot_dir}/new-boot.img"
+  if [[ ! -f "${patched_boot}" || ! -s "${patched_boot}" ]]; then
+    echo -e "::error::kptools repack did not produce new-boot.img."
+    exit 1
+  fi
+
+  echo -e "APatch patching complete. Patched boot image: ${patched_boot}"
+  export APATCH_PATCHED_BOOT="${patched_boot}"
+}
+
 # Function to patch the OTA with the AVB and OTA keys
 # Leverages `my-avbroot-setup` to patch the OTA
 # This function does a lot of things before patching the OTA
@@ -227,8 +319,8 @@ function patch_ota() {
     args+=("--module-oemunlockonboot-sig" "${WORKDIR}/signatures/oemunlockonboot.zip.sig")
     args+=("--module-alterinstaller-sig" "${WORKDIR}/signatures/alterinstaller.zip.sig")
 
-    # Add support for Magisk or KernelSU
-    if [[ "${FLAVOR}" == 'magisk' ]]; then
+    # Add support for Magisk, KernelSU, or APatch
+    if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]]; then
       echo -e "Magisk is enabled. Modifying the setup script...\n"
       args+=("--patch-arg=--magisk" "--patch-arg" "${magisk_path}")
       args+=("--patch-arg=--magisk-preinit-device" "--patch-arg" "${MAGISK[PREINIT]}")
@@ -239,8 +331,16 @@ function patch_ota() {
       if [ -n "${KSU_PATCHED_BOOT}" ]; then
         args+=("--patch-arg=--prepatched" "--patch-arg" "${KSU_PATCHED_BOOT}")
       fi
+    elif [[ "${FLAVOR}" == 'apatch' ]]; then
+      echo -e "APatch is enabled. Pre-patching kernel and embedding into OTA...\n"
+      if [[ ! -f "${WORKDIR}/tools/apatch/kptools-linux" || ! -f "${WORKDIR}/tools/apatch/kpimg-android" ]]; then
+        echo -e "::error::APatch tools not found. Run check_and_download_dependencies first."
+        exit 1
+      fi
+      patch_kernel_with_apatch
+      args+=("--patch-arg=--prepatched" "--patch-arg" "${APATCH_PATCHED_BOOT}")
     else
-      echo -e "Magisk/KernelSU is not enabled. Skipping...\n"
+      echo -e "Rootless mode (or unsupported flavor). Skipping root patching...\n"
     fi
 
     # Have to clear storage space because, `csig` results in storage runout
@@ -470,10 +570,12 @@ function make_directories() {
 
 function generate_ota_info() {
   # Detect build flavor
-  if [[ "${FLAVOR}" == 'magisk' ]]; then
-    local build_flavor="magisk-${VERSION[MAGISK]}"
+  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'magisk-pixincreate' ]]; then
+    local build_flavor="${FLAVOR}-${VERSION[MAGISK]}"
   elif [[ "${FLAVOR}" == 'kernelsu' ]]; then
     local build_flavor="kernelsu-${VERSION[KERNELSU]}"
+  elif [[ "${FLAVOR}" == 'apatch' ]]; then
+    local build_flavor="apatch-${VERSION[APATCH]}"
   else
     local build_flavor="rootless"
   fi
