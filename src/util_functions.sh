@@ -5,6 +5,7 @@
 source src/declarations.sh
 source src/exchange.sh
 source src/fetcher.sh
+source src/kernelsu.sh
 source src/verifier.sh
 
 # Function to check and download the dependencies
@@ -61,7 +62,7 @@ function check_and_download_dependencies() {
   done
 
   # Retry logic for magisk
-  if [[ "${ADDITIONALS[ROOT]}" == 'true' ]]; then
+  if [[ "${FLAVOR}" == 'magisk' ]] || [[ "${FLAVOR}" == 'kernelsu' ]]; then
     RETRY_COUNT=0 # Reset retry count for magisk
     while true; do
       # Magisk is an exception as it is an APK and hence we do the get call directly and verify
@@ -72,6 +73,10 @@ function check_and_download_dependencies() {
 
       [[ "${ADDITIONALS[RETRY]}" == "true" ]] && [[ "${RETRY}" == "true" ]] || break
     done
+  fi
+
+  if [[ "${FLAVOR}" == 'kernelsu' ]]; then
+    download_kernelsu_tools
   fi
 }
 
@@ -222,13 +227,20 @@ function patch_ota() {
     args+=("--module-oemunlockonboot-sig" "${WORKDIR}/signatures/oemunlockonboot.zip.sig")
     args+=("--module-alterinstaller-sig" "${WORKDIR}/signatures/alterinstaller.zip.sig")
 
-    # Add support for Magisk if root config is enabled
-    if [[ "${ADDITIONALS[ROOT]}" == 'true' ]]; then
+    # Add support for Magisk or KernelSU
+    if [[ "${FLAVOR}" == 'magisk' ]]; then
       echo -e "Magisk is enabled. Modifying the setup script...\n"
       args+=("--patch-arg=--magisk" "--patch-arg" "${magisk_path}")
       args+=("--patch-arg=--magisk-preinit-device" "--patch-arg" "${MAGISK[PREINIT]}")
+    elif [[ "${FLAVOR}" == 'kernelsu' ]]; then
+      echo -e "KernelSU is enabled. Preparing patched boot image...\n"
+      extract_magiskboot
+      inject_kernelsu_into_boot
+      if [ -n "${KSU_PATCHED_BOOT}" ]; then
+        args+=("--patch-arg=--prepatched" "--patch-arg" "${KSU_PATCHED_BOOT}")
+      fi
     else
-      echo -e "Magisk is not enabled. Skipping...\n"
+      echo -e "Magisk/KernelSU is not enabled. Skipping...\n"
     fi
 
     # Have to clear storage space because, `csig` results in storage runout
@@ -458,9 +470,15 @@ function make_directories() {
 
 function generate_ota_info() {
   # Detect build flavor
-  local flavor=$([[ ${ADDITIONALS[ROOT]} == 'true' ]] && echo "magisk-${VERSION[MAGISK]}" || echo "rootless")
+  if [[ "${FLAVOR}" == 'magisk' ]]; then
+    local build_flavor="magisk-${VERSION[MAGISK]}"
+  elif [[ "${FLAVOR}" == 'kernelsu' ]]; then
+    local build_flavor="kernelsu-${VERSION[KERNELSU]}"
+  else
+    local build_flavor="rootless"
+  fi
   # e.g. bluejay-2024082200-rootless-abc12345-dirty.zip
-  OUTPUTS[PATCHED_OTA]="${DEVICE_NAME}-${VERSION[GRAPHENEOS]}-${flavor}-$(git rev-parse --short HEAD)$(dirty_suffix).zip"
+  OUTPUTS[PATCHED_OTA]="${DEVICE_NAME}-${VERSION[GRAPHENEOS]}-${build_flavor}-$(git rev-parse --short HEAD)$(dirty_suffix).zip"
 }
 
 function check_toml_env() {

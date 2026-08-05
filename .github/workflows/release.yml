@@ -10,11 +10,15 @@ on:
       device-id:
         description: Device code name
         required: true
-      root:
-        description: Add root to the build
-        required: false
-        type: boolean
-        default: false
+      flavor:
+        description: Build flavor
+        required: true
+        type: choice
+        options:
+          - rootless
+          - magisk
+          - kernelsu
+        default: rootless
       magisk-preinit-device:
         description: Magisk preinit device. For example, "sda8", "sda15" etc.,
         required: false
@@ -47,15 +51,14 @@ jobs:
     permissions: write-all
 
     steps:
-      - name: Check if `magisk-preinit-device` is set when `root` is true
+      - name: Check if `magisk-preinit-device` is set when flavor is magisk
         run: |
-          # Convert inputs to proper boolean values
-          root=${{ github.event.inputs.root }}
+          # Check inputs
+          flavor=${{ github.event.inputs.flavor }}
           magisk_preinit_device=${{ github.event.inputs.magisk-preinit-device }}
 
-          # Ensure that the boolean comparison is correctly handled
-          if [ "$root" == "true" ] && [ -z "$magisk_preinit_device" ]; then
-            echo -e "::error:: magisk-preinit-device is required when root is true."
+          if [ "$flavor" == "magisk" ] && [ -z "$magisk_preinit_device" ]; then
+            echo -e "::error:: magisk-preinit-device is required when flavor is magisk."
             exit 1
           fi
 
@@ -91,8 +94,8 @@ jobs:
         shell: bash
         if: github.event_name == 'schedule' || github.event.inputs.release-type == 'default'
         run: |
-          # Determine if the build is based on magisk or rootless (build flavor)
-          build_flavor=$([[ ${{ github.event.inputs.root == 'true' }} == 'true' ]] && echo 'magisk' || echo 'rootless')
+          # Determine build flavor
+          build_flavor=${{ github.event.inputs.flavor || 'rootless' }}
 
           # Check if the tag exists
           if git show-ref --tags $GRAPHENEOS_VERSION --quiet; then
@@ -143,8 +146,8 @@ jobs:
                 fi
               done
 
-              # Check if valid_build is either "magisk" or "rootless"
-              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "rootless" ]]; then
+              # Check if valid_build is supported
+              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "rootless" ]] || [[ "$valid_build" == "kernelsu" ]]; then
                 echo -e "Proceeding with build to create missing assets..."
               else
                 echo -e "::error::Asset with \`$build_flavor\` flavor already exists!"
@@ -193,7 +196,7 @@ jobs:
       - name: Patch OTA
         shell: bash
         env:
-          ADDITIONALS_ROOT: ${{ github.event.inputs.root }}
+          FLAVOR: ${{ github.event.inputs.flavor || 'rootless' }}
           CLEANUP: true
           MAGISK_PREINIT: ${{ github.event.inputs.magisk-preinit-device }}
           PASSPHRASE_AVB: ${{ secrets.PASSPHRASE_AVB }}
@@ -234,21 +237,23 @@ jobs:
         if: github.event.inputs.release-type != 'build-only'
         run: |
           CURRENT_COMMIT=$(git rev-parse --short HEAD)
-          FLAVOR=("magisk" "rootless")
-          root=${{ github.event.inputs.root }}
+          FLAVOR=("magisk" "rootless" "kernelsu")
+          flavor=${{ github.event.inputs.flavor || 'rootless' }}
 
-          # Create `magisk` and `rootless` directories if they don't exist
-          mkdir -p "${FLAVOR}"
+          # Create directories if they don't exist
+          mkdir -p "magisk" "rootless" "kernelsu"
 
           # Switch to gh-pages branch
           git checkout gh-pages
           echo -e "Updating Configs for the new release..."
 
-          # If root is true or the the release has `magisk` in <device_name>.json, use magisk flavor
-          if [ "${root}" = "true" ] || grep -q magisk "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="${FLAVOR[0]}/${{ env.DEVICE_NAME }}.json"
+          # Select the appropriate directory for the JSON configuration
+          if [ "${flavor}" = "magisk" ] || grep -q magisk "${{ env.DEVICE_NAME }}.json"; then
+            TARGET_FILE="magisk/${{ env.DEVICE_NAME }}.json"
+          elif [ "${flavor}" = "kernelsu" ] || grep -q kernelsu "${{ env.DEVICE_NAME }}.json"; then
+            TARGET_FILE="kernelsu/${{ env.DEVICE_NAME }}.json"
           else
-            TARGET_FILE="${FLAVOR[1]}/${{ env.DEVICE_NAME }}.json"
+            TARGET_FILE="rootless/${{ env.DEVICE_NAME }}.json"
           fi
 
           echo -e "Updating Configs for the new release..."
