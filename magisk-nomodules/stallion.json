@@ -1,7 +1,7 @@
 {
   "version": 2,
   "full": {
-    "location_ota": "https://github.com/Finnyus/PixeneOS/releases/download/2026072900/stallion-2026072900-magisk-nomodules-v30.7-1d98668.zip",
-    "location_csig": "https://github.com/Finnyus/PixeneOS/releases/download/2026072900/stallion-2026072900-magisk-nomodules-v30.7-1d98668.zip.csig"
+    "location_ota": "https://github.com/Finnyus/PixeneOS/releases/download/2026072900/stallion-2026072900-magisk-nomodules-1-7ca8578.zip",
+    "location_csig": "https://github.com/Finnyus/PixeneOS/releases/download/2026072900/stallion-2026072900-magisk-nomodules-1-7ca8578.zip.csig"
   }
 }
