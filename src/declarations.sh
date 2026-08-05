@@ -9,6 +9,8 @@ declare -A MAGISK
 declare -A OUTPUTS
 declare -A VERSION
 declare -A APATCH
+declare -A KERNELSU
+declare -A KERNELSU_NEXT
 
 # Build Specifications
 ARCH="x86_64-unknown-linux-gnu" # for Linux
