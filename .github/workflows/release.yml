@@ -20,6 +20,7 @@ on:
           - magisk-pixincreate
           - kernelsu
           - apatch
+          - apatch-app
         default: rootless
       magisk-preinit-device:
         description: Magisk preinit device. For example, "sda8", "sda15" etc.,
@@ -149,7 +150,7 @@ jobs:
               done
 
               # Check if valid_build is supported
-              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "magisk-pixincreate" ]] || [[ "$valid_build" == "rootless" ]] || [[ "$valid_build" == "kernelsu" ]] || [[ "$valid_build" == "apatch" ]]; then
+              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "magisk-pixincreate" ]] || [[ "$valid_build" == "rootless" ]] || [[ "$valid_build" == "kernelsu" ]] || [[ "$valid_build" == "apatch" ]] || [[ "$valid_build" == "apatch-app" ]]; then
                 echo -e "Proceeding with build to create missing assets..."
               else
                 echo -e "::error::Asset with \`$build_flavor\` flavor already exists!"
@@ -240,11 +241,11 @@ jobs:
         if: github.event.inputs.release-type != 'build-only'
         run: |
           CURRENT_COMMIT=$(git rev-parse --short HEAD)
-          FLAVOR=("magisk" "magisk-pixincreate" "rootless" "kernelsu" "apatch")
+          FLAVOR=("magisk" "magisk-pixincreate" "rootless" "kernelsu" "apatch" "apatch-app")
           flavor=${{ github.event.inputs.flavor || 'rootless' }}
 
           # Create directories if they don't exist
-          mkdir -p "magisk" "magisk-pixincreate" "rootless" "kernelsu" "apatch"
+          mkdir -p "magisk" "magisk-pixincreate" "rootless" "kernelsu" "apatch" "apatch-app"
 
           # Switch to gh-pages branch
           git checkout gh-pages
@@ -259,6 +260,8 @@ jobs:
             TARGET_FILE="kernelsu/${{ env.DEVICE_NAME }}.json"
           elif [ "${flavor}" = "apatch" ] || grep -q apatch "${{ env.DEVICE_NAME }}.json"; then
             TARGET_FILE="apatch/${{ env.DEVICE_NAME }}.json"
+          elif [ "${flavor}" = "apatch-app" ] || grep -q apatch-app "${{ env.DEVICE_NAME }}.json"; then
+            TARGET_FILE="apatch-app/${{ env.DEVICE_NAME }}.json"
           else
             TARGET_FILE="rootless/${{ env.DEVICE_NAME }}.json"
           fi

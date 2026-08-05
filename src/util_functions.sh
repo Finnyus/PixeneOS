@@ -339,6 +339,14 @@ function patch_ota() {
       fi
       patch_kernel_with_apatch
       args+=("--patch-arg=--prepatched" "--patch-arg" "${APATCH_PATCHED_BOOT}")
+    elif [[ "${FLAVOR}" == 'apatch-app' ]]; then
+      echo -e "APatch-app is enabled. Using pre-provided apatch-custom-boot.img...\n"
+      local custom_boot_img="$(pwd)/apatch-custom-boot.img"
+      if [[ ! -f "${custom_boot_img}" ]]; then
+        echo -e "::error::apatch-custom-boot.img not found!"
+        exit 1
+      fi
+      args+=("--patch-arg=--prepatched" "--patch-arg" "${custom_boot_img}")
     else
       echo -e "Rootless mode (or unsupported flavor). Skipping root patching...\n"
     fi
@@ -574,8 +582,8 @@ function generate_ota_info() {
     local build_flavor="${FLAVOR}-${VERSION[MAGISK]}"
   elif [[ "${FLAVOR}" == 'kernelsu' ]]; then
     local build_flavor="kernelsu-${VERSION[KERNELSU]}"
-  elif [[ "${FLAVOR}" == 'apatch' ]]; then
-    local build_flavor="apatch-${VERSION[APATCH]}"
+  elif [[ "${FLAVOR}" == 'apatch' ]] || [[ "${FLAVOR}" == 'apatch-app' ]]; then
+    local build_flavor="${FLAVOR}-${VERSION[APATCH]}"
   else
     local build_flavor="rootless"
   fi
