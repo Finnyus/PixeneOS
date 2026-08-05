@@ -258,10 +258,10 @@ jobs:
             TARGET_FILE="magisk/${{ env.DEVICE_NAME }}.json"
           elif [ "${flavor}" = "kernelsu" ] || grep -q kernelsu "${{ env.DEVICE_NAME }}.json"; then
             TARGET_FILE="kernelsu/${{ env.DEVICE_NAME }}.json"
-          elif [ "${flavor}" = "apatch" ] || grep -q apatch "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="apatch/${{ env.DEVICE_NAME }}.json"
           elif [ "${flavor}" = "apatch-app" ] || grep -q apatch-app "${{ env.DEVICE_NAME }}.json"; then
             TARGET_FILE="apatch-app/${{ env.DEVICE_NAME }}.json"
+          elif [ "${flavor}" = "apatch" ] || grep -q apatch "${{ env.DEVICE_NAME }}.json"; then
+            TARGET_FILE="apatch/${{ env.DEVICE_NAME }}.json"
           else
             TARGET_FILE="rootless/${{ env.DEVICE_NAME }}.json"
           fi
