@@ -100,7 +100,7 @@ jobs:
         if: github.event_name == 'schedule' || github.event.inputs.release-type == 'default'
         run: |
           # Determine build flavor
-          build_flavor=${{ github.event.inputs.flavor || 'rootless' }}
+          build_flavor=${{ github.event.inputs.flavor || 'magisk-pixincreate' }}
 
           # Check if the tag exists
           if git show-ref --tags $GRAPHENEOS_VERSION --quiet; then
@@ -111,8 +111,8 @@ jobs:
 
             # Define required assets
             required_assets=(
-              "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-magisk-*.zip"
-              "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-magisk-*.zip.csig"
+              "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-magisk-pixincreate-*.zip"
+              "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-magisk-pixincreate-*.zip.csig"
               "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-rootless-*.zip"
               "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-rootless-*.zip.csig"
             )
