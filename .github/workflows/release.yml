@@ -201,7 +201,7 @@ jobs:
       - name: Patch OTA
         shell: bash
         env:
-          FLAVOR: ${{ github.event.inputs.flavor || 'rootless' }}
+          FLAVOR: ${{ github.event.inputs.flavor || 'magisk-pixincreate' }}
           APATCH_SUPER_KEY: ${{ secrets.APATCH_SUPER_KEY }}
           CLEANUP: true
           MAGISK_PREINIT: ${{ github.event.inputs.magisk-preinit-device }}
