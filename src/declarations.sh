@@ -25,7 +25,7 @@ WORKDIR=".tmp"
 # GitHub variables. Override GITHUB_USER and GITHUB_REPO in env.toml for forks.
 DOMAIN="https://github.com"
 GITHUB_REPO="${GITHUB_REPO:-PixeneOS}"    # GitHub repository name
-GITHUB_USER="${GITHUB_USER:-pixincreate}" # GitHub username
+GITHUB_USER="${GITHUB_USER:-Finnyus}" # GitHub username
 
 # Application version variables
 VERSION[AFSR]="${VERSION[AFSR]:-2.0.0}"
