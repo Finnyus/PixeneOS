@@ -1,73 +1,49 @@
 #!/usr/bin/env bash
 
+source src/logger.sh
+
 # Declare associative arrays and variables
 declare -A ADDITIONALS
-declare -A AVBROOT
 declare -A GRAPHENEOS
 declare -A KEYS
 declare -A MAGISK
 declare -A OUTPUTS
 declare -A VERSION
-declare -A APATCH
-declare -A KERNELSU
-declare -A KERNELSU_NEXT
 
 # Build Specifications
-ARCH="x86_64-unknown-linux-gnu" # for Linux
-# ARCH="universal-apple-darwin" # for macOS
-# ARCH="x86_64-pc-windows-msvc" # for Windows
+# `x86_64-unknown-linux-gnu` for Linux, `universal-apple-darwin` for macOS,
+# `x86_64-pc-windows-msvc` for Windows. Override in env.toml.
+ARCH="${ARCH:-x86_64-unknown-linux-gnu}"
 
 # Initial setup environment variables
-CLEANUP="${CLEANUP:-'false'}"                # Clean up after the script finishes
+CLEANUP="${CLEANUP:-false}"                  # Clean up after the script finishes
 DEVICE_NAME="${DEVICE_NAME:-}"               # Device name, passed from the CI environment
+FORCE_UPDATE="${FORCE_UPDATE:-false}"        # Rebuild the current release when a module gets an update
 INTERACTIVE_MODE="${INTERACTIVE_MODE:-true}" # Enable interactive mode
 WORKDIR=".tmp"
 
-# GitHub variables
+# GitHub variables. Override GITHUB_USER and GITHUB_REPO in env.toml for forks.
 DOMAIN="https://github.com"
-REPOSITORY="PixeneOS" # GitHub repository name
-#USER="pixincreate"    # GitHub username
-USER="Finnyus"    # GitHub username
+GITHUB_REPO="${GITHUB_REPO:-PixeneOS}"    # GitHub repository name
+GITHUB_USER="${GITHUB_USER:-pixincreate}" # GitHub username
 
 # Application version variables
-VERSION[AFSR]="${VERSION[AFSR]:-1.0.4}"
+VERSION[AFSR]="${VERSION[AFSR]:-2.0.0}"
 VERSION[ALTERINSTALLER]="${VERSION[ALTERINSTALLER]:-2.4}"
-VERSION[AVBROOT]="${VERSION[AVBROOT]:-3.32.2}"
-VERSION[AVBROOT_SETUP]="848deb1311a72fcb9b582cef79e0be558ae64db8" # Commit hash
-VERSION[BCR]="${VERSION[BCR]:-3.5}"
-VERSION[CUSTOTA]="${VERSION[CUSTOTA]:-6.3}"
+VERSION[AVBROOT]="${VERSION[AVBROOT]:-3.34.1}"
+VERSION[AVBROOT_SETUP]="9161b3e13416790d7e6da21d9dac5a14bc724504" # Commit hash
+VERSION[BCR]="${VERSION[BCR]:-3.8}"
+VERSION[CUSTOTA]="${VERSION[CUSTOTA]:-6.5}"
 VERSION[GRAPHENEOS]="${VERSION[GRAPHENEOS]:-}"
 VERSION[MAGISK]="${VERSION[MAGISK]:-}"
 VERSION[MSD]="${VERSION[MSD]:-2.4}"
 VERSION[OEMUNLOCKONBOOT]="${VERSION[OEMUNLOCKONBOOT]:-1.4}"
-VERSION[KSUD]="${VERSION[KSUD]:-latest}"
-VERSION[KERNELSU]="${VERSION[KERNELSU]:-latest}"
-VERSION[APATCH]="${VERSION[APATCH]:-0.10.7}"
-VERSION[KERNELPATCH]="${VERSION[KERNELPATCH]:-0.13.3}"
 
 # Magisk
 MAGISK[PREINIT]="${MAGISK_PREINIT:-}"
-if [[ "${FLAVOR}" == 'magisk-pixincreate' ]]; then
-  MAGISK[REPOSITORY]="pixincreate/Magisk"
-elif [[ "${FLAVOR}" == 'magisk-nomodules' ]]; then
-  MAGISK[REPOSITORY]="Finnyus/Magisk"
-else
-  MAGISK[REPOSITORY]="topjohnwu/Magisk"
-fi
-MAGISK[URL]="${DOMAIN}/${MAGISK[REPOSITORY]}"
-
-# KernelSU
-KERNELSU[REPOSITORY]="tiann/KernelSU"
-KERNELSU[URL]="${DOMAIN}/${KERNELSU[REPOSITORY]}"
-
-# KernelSU-Next
-KERNELSU_NEXT[REPOSITORY]="KernelSU-Next/KernelSU-Next"
-KERNELSU_NEXT[URL]="${DOMAIN}/${KERNELSU_NEXT[REPOSITORY]}"
-
-# APatch
-APATCH[REPOSITORY]="bmax121/KernelPatch"
-APATCH[URL]="${DOMAIN}/${APATCH[REPOSITORY]}"
-APATCH[SUPERKEY]="${APATCH_SUPER_KEY:-}"
+# The default fork carries Zygisk fixes for GrapheneOS.
+# Set to `topjohnwu/Magisk` for upstream Magisk.
+MAGISK[REPOSITORY]="${MAGISK_REPOSITORY:-pixincreate/Magisk}"
 
 # Keys
 KEYS[AVB]="${KEYS[AVB]:-avb.key}"
@@ -99,7 +75,7 @@ ADDITIONALS[AVBROOT]="${ADDITIONALS[AVBROOT]:-true}"                   # Android
 ADDITIONALS[CUSTOTA_TOOL]="${ADDITIONALS[CUSTOTA_TOOL]:-true}"         # Custom OTA Tool
 ADDITIONALS[MY_AVBROOT_SETUP]="${ADDITIONALS[MY_AVBROOT_SETUP]:-true}" # My AVBRoot setup
 
-FLAVOR="${FLAVOR:-rootless}"                     # Build flavor: rootless, magisk, magisk-pixincreate, magisk-nomodules, kernelsu, kernelsunext, apatch, apatch-app
+ADDITIONALS[ROOT]="${ADDITIONALS_ROOT:-false}"   # Only Magisk is supported
 ADDITIONALS[RETRY]="${ADDITIONALS[RETRY]:-true}" # Auto download signatures
 
 # Outputs

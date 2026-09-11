@@ -10,20 +10,11 @@ on:
       device-id:
         description: Device code name
         required: true
-      flavor:
-        description: Build flavor
-        required: true
-        type: choice
-        options:
-          - rootless
-          - magisk
-          - magisk-pixincreate
-          - magisk-nomodules
-          - kernelsu
-          - kernelsunext
-          - apatch
-          - apatch-app
-        default: rootless
+      root:
+        description: Add root to the build
+        required: false
+        type: boolean
+        default: false
       magisk-preinit-device:
         description: Magisk preinit device. For example, "sda8", "sda15" etc.,
         required: false
@@ -31,7 +22,7 @@ on:
         description: GrapheneOS update channel. Supports `alpha`, `beta` and `stable`. Defaults to `stable`
         required: false
       release-type:
-        description: 'How to handle the release. `default`: build and publish if new. `build-only`: only build. `force-publish`: build and publish even if it exists.'
+        description: "How to handle the release. `default`: build and publish if new. `build-only`: only build. `force-publish`: build and publish even if it exists."
         required: true
         type: choice
         options:
@@ -40,11 +31,32 @@ on:
           - force-publish
         default: default
 
+  # Allows this workflow to be called per device, see multi-release.yml
+  workflow_call:
+    inputs:
+      device-id:
+        required: true
+        type: string
+      root:
+        required: false
+        type: boolean
+        default: false
+      magisk-preinit-device:
+        required: false
+        type: string
+      update-channel:
+        required: false
+        type: string
+      release-type:
+        required: false
+        type: string
+        default: default
+
 env:
   CARGO_INCREMENTAL: 1
-  DEVICE_NAME: ${{ github.event.inputs.device-id }}
+  DEVICE_NAME: ${{ inputs.device-id }}
   INTERACTIVE_MODE: false
-  GRAPHENEOS_UPDATE_CHANNEL: ${{ github.event.inputs.update-channel }}
+  GRAPHENEOS_UPDATE_CHANNEL: ${{ inputs.update-channel }}
   RUST_BACKTRACE: short
   RUSTUP_MAX_RETRIES: 10
 
@@ -56,17 +68,6 @@ jobs:
     permissions: write-all
 
     steps:
-      - name: Check if `magisk-preinit-device` is set when flavor is magisk
-        run: |
-          # Check inputs
-          flavor=${{ github.event.inputs.flavor }}
-          magisk_preinit_device=${{ github.event.inputs.magisk-preinit-device }}
-
-          if [[ "$flavor" == magisk* ]] && [ -z "$magisk_preinit_device" ]; then
-            echo -e "::error:: magisk-preinit-device is required when flavor is magisk."
-            exit 1
-          fi
-
       - name: Checkout code
         uses: actions/checkout@v7
         with:
@@ -81,6 +82,22 @@ jobs:
 
           echo "DEVICE_NAME=${DEVICE_NAME}" >> $GITHUB_ENV
           echo "GRAPHENEOS_UPDATE_CHANNEL=${GRAPHENEOS[UPDATE_CHANNEL]}" >> $GITHUB_ENV
+          echo "FORCE_UPDATE=${FORCE_UPDATE:-false}" >> $GITHUB_ENV
+          # Let scheduled runs build rooted OTAs when env.toml enables it
+          echo "ROOT=${ADDITIONALS[ROOT]}" >> $GITHUB_ENV
+          echo "MAGISK_PREINIT=${MAGISK[PREINIT]}" >> $GITHUB_ENV
+
+      - name: Check if `magisk-preinit-device` is set when `root` is true
+        run: |
+          # Inputs win on manual runs, env.toml supplies the values on schedule
+          root="${{ inputs.root || env.ROOT }}"
+          magisk_preinit_device="${{ inputs.magisk-preinit-device || env.MAGISK_PREINIT }}"
+
+          # Ensure that the boolean comparison is correctly handled
+          if [ "$root" == "true" ] && [ -z "$magisk_preinit_device" ]; then
+            echo -e "::error:: magisk-preinit-device is required when root is true."
+            exit 1
+          fi
 
       - name: Set GrapheneOS version
         shell: bash
@@ -97,76 +114,19 @@ jobs:
 
       - name: Check if a build exists already and verify assets
         shell: bash
-        if: github.event_name == 'schedule' || github.event.inputs.release-type == 'default'
-        run: |
-          # Determine build flavor
-          build_flavor=${{ github.event.inputs.flavor || 'magisk-pixincreate' }}
-
-          # Check if the tag exists
-          if git show-ref --tags $GRAPHENEOS_VERSION --quiet; then
-            echo -e "Tag with GrapheneOS version $GRAPHENEOS_VERSION already exists. Looking for assets..."
-            # Fetch the release information for the tag
-            repo_url="https://api.github.com/repos/${{ github.repository }}/releases/tags/$GRAPHENEOS_VERSION"
-            release_info=$(curl -sL "$repo_url")
-
-            # Define required assets
-            required_assets=(
-              "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-magisk-pixincreate-*.zip"
-              "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-magisk-pixincreate-*.zip.csig"
-              "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-rootless-*.zip"
-              "${{ env.DEVICE_NAME }}-$GRAPHENEOS_VERSION-rootless-*.zip.csig"
-            )
-
-            existing_assets=$(echo "$release_info" | jq -r '.assets[].name')
-            missing_assets=()
-
-            for required_asset in "${required_assets[@]}"; do
-              # Convert wildcard pattern to regex
-              regex="${required_asset//\*/.*}"
-
-              for asset in "${existing_assets[@]}"; do
-                # if existing asset matches the required asset, break the loop
-                if ! [[ $asset =~ $regex ]]; then
-                  missing_assets+=("$required_asset")
-                  break
-                fi
-              done
-            done
-
-            if [ ${#missing_assets[@]} -eq 0 ]; then
-              echo -e "::error::All required assets are present. Exiting..."
-              exit 1
-            else
-              echo -e "Missing assets:"
-              for missing_asset in "${missing_assets[@]}"; do
-                echo -e "  - $missing_asset"
-              done
-
-              # Grep always throws an error stating it cannot find the file or directory
-              valid_build=""
-              for missing_asset in "${missing_assets[@]}"; do
-                if [[ $missing_asset == *"$build_flavor"* ]]; then
-                  valid_build="$build_flavor"
-                  break
-                fi
-              done
-
-              # Check if valid_build is supported
-              if [[ "$valid_build" == "magisk" ]] || [[ "$valid_build" == "magisk-pixincreate" ]] || [[ "$valid_build" == "magisk-nomodules" ]] || [[ "$valid_build" == "rootless" ]] || [[ "$valid_build" == "kernelsu" ]] || [[ "$valid_build" == "kernelsunext" ]] || [[ "$valid_build" == "apatch" ]] || [[ "$valid_build" == "apatch-app" ]]; then
-                echo -e "Proceeding with build to create missing assets..."
-              else
-                echo -e "::error::Asset with \`$build_flavor\` flavor already exists!"
-                exit 1
-              fi
-            fi
-          else
-            echo -e "Tag with GrapheneOS version $GRAPHENEOS_VERSION does not exist. Creating one..."
-          fi
+        if: github.event_name == 'schedule' || inputs.release-type == 'default'
+        env:
+          REPOSITORY: ${{ github.repository }}
+          ROOT: ${{ inputs.root || env.ROOT }}
+        run: src/ci/check_existing_build.sh
 
       - name: Setup Git
+        env:
+          USER_EMAIL: ${{ secrets.EMAIL }}
+          USER_NAME: ${{ github.repository_owner }}
         run: |
-          # Configure git for pushing changes
-          git config --global user.email ${{ secrets.EMAIL }} && git config --global user.name PiX
+          git config --global user.email "$USER_EMAIL"
+          git config --global user.name "$USER_NAME"
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@master
@@ -174,7 +134,7 @@ jobs:
           toolchain: stable 2 weeks ago
 
       - name: Build and Cache Rust Dependencies
-        uses: Swatinem/rust-cache@v2.9.1
+        uses: Swatinem/rust-cache@v2.9.2
 
       - name: Install Python
         uses: actions/setup-python@v7
@@ -193,25 +153,16 @@ jobs:
           echo "${{ secrets.OTA_KEY }}" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-      - name: Install Python dependencies globally
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install tomlkit pydantic
-
       - name: Patch OTA
         shell: bash
         env:
-          FLAVOR: ${{ github.event.inputs.flavor || 'magisk-pixincreate' }}
-          APATCH_SUPER_KEY: ${{ secrets.APATCH_SUPER_KEY }}
+          ADDITIONALS_ROOT: ${{ inputs.root || env.ROOT }}
           CLEANUP: true
-          MAGISK_PREINIT: ${{ github.event.inputs.magisk-preinit-device }}
+          MAGISK_PREINIT: ${{ inputs.magisk-preinit-device || env.MAGISK_PREINIT }}
           PASSPHRASE_AVB: ${{ secrets.PASSPHRASE_AVB }}
           PASSPHRASE_OTA: ${{ secrets.PASSPHRASE_OTA }}
         run: |
           echo -e "Running release script.."
-
-          # Force nested virtual environments created by main.sh to see our globally installed packages
-          export PYTHONPATH=$(python -c "import site; print(':'.join(site.getsitepackages()))")
 
           # Instead of running the script directly,
           # we source it to get the variables in the current shell and use them in the next steps by exporting them
@@ -229,7 +180,7 @@ jobs:
 
       - name: Make Release
         uses: softprops/action-gh-release@v3
-        if: github.event.inputs.release-type != 'build-only'
+        if: inputs.release-type != 'build-only'
         with:
           body_path: ${{ github.workspace }}-CHANGELOG.txt
           files: |
@@ -238,62 +189,19 @@ jobs:
           name: "${{ env.GRAPHENEOS_VERSION }}"
           tag_name: "${{ env.GRAPHENEOS_VERSION }}"
 
+      - name: Remove superseded release assets
+        shell: bash
+        if: env.FORCE_REBUILD == 'true' && inputs.release-type != 'build-only'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ROOT: ${{ inputs.root || env.ROOT }}
+        run: src/ci/remove_superseded_assets.sh
+
       - name: Publish OTA to server
         shell: bash
-        if: github.event.inputs.release-type != 'build-only'
-        run: |
-          CURRENT_COMMIT=$(git rev-parse --short HEAD)
-          FLAVOR=("magisk" "magisk-pixincreate" "magisk-nomodules" "rootless" "kernelsu" "kernelsunext" "apatch" "apatch-app")
-          flavor=${{ github.event.inputs.flavor || 'rootless' }}
-
-          # Create directories if they don't exist
-          mkdir -p "magisk" "magisk-pixincreate" "magisk-nomodules" "rootless" "kernelsu" "kernelsunext" "apatch" "apatch-app"
-
-          # Switch to gh-pages branch
-          git checkout gh-pages
-          echo -e "Updating Configs for the new release..."
-
-          # Select the appropriate directory for the JSON configuration
-          if [ "${flavor}" = "magisk-pixincreate" ] || grep -q magisk-pixincreate "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="magisk-pixincreate/${{ env.DEVICE_NAME }}.json"
-          elif [ "${flavor}" = "magisk-nomodules" ] || grep -q magisk-nomodules "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="magisk-nomodules/${{ env.DEVICE_NAME }}.json"
-          elif [ "${flavor}" = "magisk" ] || grep -q magisk "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="magisk/${{ env.DEVICE_NAME }}.json"
-          elif [ "${flavor}" = "kernelsunext" ] || grep -q kernelsunext "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="kernelsunext/${{ env.DEVICE_NAME }}.json"
-          elif [ "${flavor}" = "kernelsu" ] || grep -q kernelsu "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="kernelsu/${{ env.DEVICE_NAME }}.json"
-          elif [ "${flavor}" = "apatch-app" ] || grep -q apatch-app "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="apatch-app/${{ env.DEVICE_NAME }}.json"
-          elif [ "${flavor}" = "apatch" ] || grep -q apatch "${{ env.DEVICE_NAME }}.json"; then
-            TARGET_FILE="apatch/${{ env.DEVICE_NAME }}.json"
-          else
-            TARGET_FILE="rootless/${{ env.DEVICE_NAME }}.json"
-          fi
-
-          echo -e "Updating Configs for the new release..."
-
-          # Check if the target file exists, if not create an empty one to avoid any issues
-          if [ ! -f "${TARGET_FILE}" ]; then
-            echo -e "touching ${TARGET_FILE}..."
-            touch "${TARGET_FILE}"
-          fi
-
-          # Copy from `./` to `./<flavor>/` if same tag doesn't exist in the target file or if it's a force-publish
-          if [[ "${{ github.event.inputs.release-type }}" == "force-publish" ]] || ! grep -q "${{ env.GRAPHENEOS_VERSION }}" "${TARGET_FILE}"; then
-            echo -e "Copying ${{ env.DEVICE_NAME }}.json to ${TARGET_FILE}..."
-            cp "${{ env.DEVICE_NAME }}.json" "${TARGET_FILE}"
-            git add "${TARGET_FILE}"
-          else
-            echo -e "Deployed version (${{ env.GRAPHENEOS_VERSION }}) is same as current GrapheneOS release (${{ env.GRAPHENEOS_VERSION }}).\nUpdate skipped."
-          fi
-
-          # Commit and push the changes if the working directory is clean
-          if ! git diff-index --quiet HEAD; then
-            git commit -m "release("${CURRENT_COMMIT}"): bump GrapheneOS version to ${{ env.GRAPHENEOS_VERSION }}"
-            git push origin gh-pages
-          fi
-
-          # Switch back to main branch
-          git checkout main
+        if: inputs.release-type != 'build-only'
+        env:
+          RELEASE_TYPE: ${{ inputs.release-type }}
+          ROOT: ${{ inputs.root || env.ROOT }}
+        run: src/ci/publish_ota.sh
