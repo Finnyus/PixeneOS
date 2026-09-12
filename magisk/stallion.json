@@ -1,7 +1,7 @@
 {
   "version": 2,
   "full": {
-    "location_ota": "https://github.com/Finnyus/PixeneOS/releases/download/2026090700/stallion-2026090700-magisk-v31.0-058b049.zip",
-    "location_csig": "https://github.com/Finnyus/PixeneOS/releases/download/2026090700/stallion-2026090700-magisk-v31.0-058b049.zip.csig"
+    "location_ota": "https://github.com/Finnyus/PixeneOS/releases/download/2026091000/stallion-2026091000-magisk-v31.0-3de4f3d.zip",
+    "location_csig": "https://github.com/Finnyus/PixeneOS/releases/download/2026091000/stallion-2026091000-magisk-v31.0-3de4f3d.zip.csig"
   }
 }
