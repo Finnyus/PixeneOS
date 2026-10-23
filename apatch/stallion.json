@@ -1,7 +1,7 @@
 {
   "version": 2,
   "full": {
-    "location_ota": "https://github.com/Finnyus/PixeneOS/releases/download/2026102100/stallion-2026102100-apatch-11282-cd8b7d6.zip",
-    "location_csig": "https://github.com/Finnyus/PixeneOS/releases/download/2026102100/stallion-2026102100-apatch-11282-cd8b7d6.zip.csig"
+    "location_ota": "https://github.com/Finnyus/PixeneOS/releases/download/2026102100/stallion-2026102100-apatch-11282-b3117b9.zip",
+    "location_csig": "https://github.com/Finnyus/PixeneOS/releases/download/2026102100/stallion-2026102100-apatch-11282-b3117b9.zip.csig"
   }
 }
