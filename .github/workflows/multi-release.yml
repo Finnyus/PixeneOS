@@ -8,13 +8,17 @@ on:
   workflow_dispatch:
     inputs:
       devices:
-        description: 'Comma-separated device code names. With root, append the Magisk preinit device per entry. For example: "bluejay:sda8, panther:sda15" or "bluejay, panther". Leave empty to use `DEVICES` from env.toml'
+        description: 'Comma-separated device code names. With Magisk root, append the Magisk preinit device per entry. For example: "bluejay:sda8, panther:sda15" or "bluejay, panther". Leave empty to use `DEVICES` from env.toml'
         required: false
       root:
-        description: Add root to the builds
+        description: 'Root flavor to build (`apatch`, `magisk`, or `rootless`)'
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - apatch
+          - magisk
+          - rootless
+        default: apatch
       update-channel:
         description: GrapheneOS update channel. Supports `alpha`, `beta` and `stable`. Defaults to `stable`
         required: false

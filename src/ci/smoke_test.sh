@@ -46,6 +46,12 @@ done
 # Magisk APK from the latest tag of the configured repository
 check_url "magisk" "${DOMAIN}/${MAGISK[REPOSITORY]}/releases/download/${VERSION[MAGISK]}/Magisk-${VERSION[MAGISK]}.apk"
 
+# APatch and KernelPatch assets
+check_url "apatch-release" "${DOMAIN}/${APATCH[REPOSITORY]}/releases/tag/${VERSION[APATCH]}"
+check_url "kernelpatch-kpimg" "${DOMAIN}/bmax121/KernelPatch/releases/download/${VERSION[KERNELPATCH]}/kpimg-android"
+check_url "kernelpatch-kptools" "${DOMAIN}/bmax121/KernelPatch/releases/download/${VERSION[KERNELPATCH]}/kptools-linux"
+check_url "kernelpatch-toolchain" "${APATCH[TOOLCHAIN_URL]}"
+
 # GrapheneOS OTA for the configured device
 check_url "grapheneos-ota" "${GRAPHENEOS[OTA_URL]}"
 

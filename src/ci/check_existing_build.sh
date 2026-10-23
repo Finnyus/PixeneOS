@@ -7,14 +7,24 @@
 #   DEVICE_NAME         Device code name
 #   GRAPHENEOS_VERSION  GrapheneOS version to release
 #   REPOSITORY          GitHub repository as `owner/name`
-#   ROOT                "true" builds the magisk flavor, anything else rootless
+#   ROOT                `apatch`, `magisk`, or `rootless` (legacy `true` -> `apatch`, `false` -> `rootless`)
 #   FORCE_UPDATE        "true" rebuilds the current version on module updates
 #
 # Writes FORCE_REBUILD=true to GITHUB_ENV when an existing asset gets replaced.
 
 set -o nounset -o pipefail -o errexit
 
-build_flavor=$([[ "${ROOT:-false}" == "true" ]] && echo 'magisk' || echo 'rootless')
+case "${ROOT:-rootless}" in
+  apatch | true)
+    build_flavor="apatch"
+    ;;
+  magisk)
+    build_flavor="magisk"
+    ;;
+  *)
+    build_flavor="rootless"
+    ;;
+esac
 
 # Check if the tag exists
 if ! git show-ref --tags "${GRAPHENEOS_VERSION}" --quiet; then

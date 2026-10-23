@@ -5,26 +5,28 @@
 # Reads from the environment:
 #   DEVICE_NAME         Device code name
 #   GRAPHENEOS_VERSION  GrapheneOS version of the release
-#   ROOT                "true" targets the magisk flavor
+#   ROOT                `apatch`, `magisk`, or `rootless` (legacy `true` -> `apatch`, `false` -> `rootless`)
 #   RELEASE_TYPE        `force-publish` updates the server even without changes
 
 set -o nounset -o pipefail -o errexit
 
 CURRENT_COMMIT=$(git rev-parse --short HEAD)
-FLAVOR=("magisk" "rootless")
+FLAVOR=("apatch" "magisk" "rootless")
 
-# Create `magisk` and `rootless` directories if they don't exist
+# Create `apatch`, `magisk`, and `rootless` directories if they don't exist
 mkdir -p "${FLAVOR[@]}"
 
 # Switch to gh-pages branch
 git checkout gh-pages
 echo -e "Updating Configs for the new release..."
 
-# If root is true or the release has `magisk` in <device_name>.json, use magisk flavor
-if [ "${ROOT:-false}" = "true" ] || grep -q magisk "${DEVICE_NAME}.json"; then
+# Select target directory based on ROOT flavor or the asset URL in <device_name>.json
+if [[ "${ROOT:-}" == "apatch" || "${ROOT:-}" == "true" ]] || grep -q apatch "${DEVICE_NAME}.json"; then
   TARGET_FILE="${FLAVOR[0]}/${DEVICE_NAME}.json"
-else
+elif [[ "${ROOT:-}" == "magisk" ]] || grep -q magisk "${DEVICE_NAME}.json"; then
   TARGET_FILE="${FLAVOR[1]}/${DEVICE_NAME}.json"
+else
+  TARGET_FILE="${FLAVOR[2]}/${DEVICE_NAME}.json"
 fi
 
 # Check if the target file exists, if not create an empty one to avoid any issues

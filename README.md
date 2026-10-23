@@ -6,6 +6,7 @@ PixeneOS is a `shell` script designed to patch GrapheneOS OTA (Over The Air) ima
 
 ## Features
 
+- [APatch](https://github.com/bmax121/APatch) ([KernelPatch](https://github.com/david568303/KernelPatch))
 - [BCR](https://github.com/chenxiaolong/BCR)
 - [Custota](https://github.com/chenxiaolong/Custota)
 - [Magisk](https://github.com/pixincreate/Magisk)
@@ -48,10 +49,10 @@ To use this project, you need the following (most dependencies will be handled b
 
 This repository acts as a server.
 
-1. [Release.yml](.github/workflows/release.yml) checks if a build already exists. If only the `rootless` flavor exists and the user opts for the `magisk` flavor, it builds it, and vice versa. If both flavors exist for a specific version and device, it skips the build.
+1. [Release.yml](.github/workflows/release.yml) checks if a build already exists for the selected flavor (`apatch`, `magisk`, or `rootless`). If the requested flavor already exists for a specific version and device, it skips the build.
 2. The workflow calls the build script, which downloads all the [requirements](#requirements) and patches the OTA by adding your signing key and installing the additional packages mentioned in the [features section](#features).
 3. The patched OTA is released and available in the [releases section](https://github.com/pixincreate/PixeneOS/releases).
-4. The server branch is updated based on the selected flavor (`rootless` is the default).
+4. The server branch is updated based on the selected flavor (`apatch` is the default).
 
 ## Usage
 
@@ -242,7 +243,7 @@ Updates can be done by patching (or re-patching) the OTA using `adb sideload`:
 PixeneOS leverages Custota:
 
 1. Disable the [system updater app](https://github.com/chenxiaolong/avbroot#ota-updates).
-2. Open Custota and set the OTA server URL to: `https://pixincreate.github.io/PixeneOS/<rootless/magisk>`
+2. Open Custota and set the OTA server URL to: `https://pixincreate.github.io/PixeneOS/<apatch/magisk/rootless>`
 
 For more info, refer to the [server](https://github.com/pixincreate/PixeneOS/tree/gh-pages) branch.
 
@@ -307,7 +308,8 @@ This workflow runs only manually and does not affect single device setups.
 ### Hop Between Root and Rootless
 
 - To remove root, set the following URL in Custota: `https://pixincreate.github.io/PixeneOS/rootless/`
-- To add root, set the following URL in Custota: `https://pixincreate.github.io/PixeneOS/magisk/`
+- To use APatch root, set the following URL in Custota: `https://pixincreate.github.io/PixeneOS/apatch/`
+- To use Magisk root, set the following URL in Custota: `https://pixincreate.github.io/PixeneOS/magisk/`
 
 ### Commands
 

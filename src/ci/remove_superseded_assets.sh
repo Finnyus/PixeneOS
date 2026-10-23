@@ -9,12 +9,22 @@
 #   GRAPHENEOS_VERSION   GrapheneOS version of the release
 #   OUTPUTS_PATCHED_OTA  File name of the build that has to stay
 #   REPOSITORY           GitHub repository as `owner/name`
-#   ROOT                 "true" targets the magisk flavor, anything else rootless
+#   ROOT                 `apatch`, `magisk`, or `rootless` (legacy `true` -> `apatch`, `false` -> `rootless`)
 #   GH_TOKEN             Token for the `gh` CLI
 
 set -o nounset -o pipefail -o errexit
 
-build_flavor=$([[ "${ROOT:-false}" == "true" ]] && echo 'magisk' || echo 'rootless')
+case "${ROOT:-rootless}" in
+  apatch | true)
+    build_flavor="apatch"
+    ;;
+  magisk)
+    build_flavor="magisk"
+    ;;
+  *)
+    build_flavor="rootless"
+    ;;
+esac
 
 gh release view "${GRAPHENEOS_VERSION}" --repo "${REPOSITORY}" --json assets --jq '.assets[].name' |
   { grep -E "^${DEVICE_NAME}-${GRAPHENEOS_VERSION}-${build_flavor}-" || true; } |

@@ -79,5 +79,15 @@
       depNameTemplate: "chenxiaolong/afsr",
       datasourceTemplate: "github-releases",
     },
+    {
+      customType: "regex",
+      fileMatch: ["src/declarations.sh"],
+      matchStrings: [
+        'VERSION\\[KERNELPATCH\\]=\\"\\$\\{VERSION\\[KERNELPATCH\\]:-(?<currentValue>.*?)\\}"',
+      ],
+      depNameTemplate: "bmax121/KernelPatch",
+      datasourceTemplate: "github-releases",
+      versioningTemplate: "loose",
+    },
   ],
 }

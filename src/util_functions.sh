@@ -61,8 +61,12 @@ function check_and_download_dependencies() {
     done
   done
 
-  # Retry logic for magisk
-  if [[ "${ADDITIONALS[ROOT]}" == 'true' ]]; then
+  # Normalize and handle root flavor dependencies
+  local root_flavor
+  root_flavor=$(resolve_root_flavor "${ADDITIONALS[ROOT]}")
+  ADDITIONALS[ROOT]="${root_flavor}"
+
+  if [[ "${root_flavor}" == 'magisk' ]]; then
     RETRY_COUNT=0 # Reset retry count for magisk
     while true; do
       # Magisk is an exception as it is an APK and hence we do the get call directly and verify
@@ -73,7 +77,197 @@ function check_and_download_dependencies() {
 
       [[ "${ADDITIONALS[RETRY]}" == "true" ]] && [[ "${RETRY}" == "true" ]] || break
     done
+  elif [[ "${root_flavor}" == 'apatch' ]]; then
+    RETRY_COUNT=0 # Reset retry count for kernelpatch
+    while true; do
+      setup_apatch_dependencies
+      verify_downloads "kernelpatch"
+
+      [[ "${ADDITIONALS[RETRY]}" == "true" ]] && [[ "${RETRY}" == "true" ]] || break
+    done
   fi
+}
+
+# Normalize root flavor (`apatch`, `magisk`, `rootless`, plus legacy `true`/`false`)
+function resolve_root_flavor() {
+  local raw="${1:-${ADDITIONALS[ROOT]:-apatch}}"
+  case "${raw}" in
+    apatch | true)
+      echo "apatch"
+      ;;
+    magisk)
+      echo "magisk"
+      ;;
+    rootless | false | "")
+      echo "rootless"
+      ;;
+    *)
+      error "Unsupported ROOT flavor: \`${raw}\`. Supported values: \`apatch\`, \`magisk\`, \`rootless\`.\nExiting..."
+      exit 1
+      ;;
+  esac
+}
+
+# Build or download KernelPatch (kpimg-android and kptools-linux) for APatch
+function setup_apatch_dependencies() {
+  local kp_dir="${WORKDIR}/tools/kernelpatch"
+  local kpimg="${kp_dir}/kpimg-android"
+  local kptools="${kp_dir}/kptools-linux"
+  mkdir -p "${kp_dir}"
+
+  if [[ -s "${kpimg}" && -x "${kptools}" ]]; then
+    log "KernelPatch tools already exist in \`${kp_dir}\`."
+    return
+  fi
+
+  if [[ -n "${APATCH[KERNELPATCH_COMMIT]}" ]]; then
+    local source_dir="${WORKDIR}/tools/kernelpatch-source"
+    local toolchain_archive="${WORKDIR}/tools/kernelpatch-aarch64-toolchain.tar.xz"
+    local toolchain_dir="${WORKDIR}/tools/kernelpatch-toolchain"
+    local compiler_prefix
+
+    log "Building KernelPatch (kpimg & kptools) from \`${APATCH[KERNELPATCH_REPO]}@${APATCH[KERNELPATCH_COMMIT]}\`..."
+
+    if [[ "$(git -C "${source_dir}" rev-parse HEAD 2>/dev/null || true)" != "${APATCH[KERNELPATCH_COMMIT]}" ]]; then
+      rm -rf "${source_dir}"
+      git init -q "${source_dir}"
+      git -C "${source_dir}" remote add origin "${DOMAIN}/${APATCH[KERNELPATCH_REPO]}.git"
+      git -C "${source_dir}" fetch --depth 1 origin "${APATCH[KERNELPATCH_COMMIT]}"
+      git -C "${source_dir}" checkout -q --detach FETCH_HEAD
+    fi
+
+    if [[ ! -x "${toolchain_dir}/bin/aarch64-none-elf-gcc" ]]; then
+      log "Downloading ARM64 bare-metal toolchain for KernelPatch..."
+      curl -sLf "${APATCH[TOOLCHAIN_URL]}" --output "${toolchain_archive}"
+      echo "${APATCH[TOOLCHAIN_SHA256]}  ${toolchain_archive}" | sha256sum --check --status
+      rm -rf "${toolchain_dir}"
+      mkdir -p "${toolchain_dir}"
+      tar -xJf "${toolchain_archive}" -C "${toolchain_dir}" --strip-components=1
+      rm -f "${toolchain_archive}"
+    fi
+
+    compiler_prefix="$(realpath "${toolchain_dir}")/bin/aarch64-none-elf-"
+
+    make -C "${source_dir}/kernel" clean
+    make -C "${source_dir}/kernel" hdr kpimg ANDROID=1 TARGET_COMPILE="${compiler_prefix}"
+    cp "${source_dir}/kernel/kpimg" "${kpimg}"
+
+    ANDROID=1 cmake -S "${source_dir}/tools" -B "${source_dir}/tools/build" -DCMAKE_BUILD_TYPE=Release
+    ANDROID=1 cmake --build "${source_dir}/tools/build" -j "$(nproc)"
+    cp "${source_dir}/tools/build/kptools" "${kptools}"
+    chmod +x "${kptools}"
+
+    rm -rf "${source_dir}" "${toolchain_dir}"
+  else
+    local kp_base_url="${DOMAIN}/bmax121/KernelPatch/releases/download/${VERSION[KERNELPATCH]}"
+    log "Downloading prebuilt KernelPatch \`${VERSION[KERNELPATCH]}\`..."
+    curl -sLf "${kp_base_url}/kpimg-android" --output "${kpimg}"
+    curl -sLf "${kp_base_url}/kptools-linux" --output "${kptools}"
+    chmod +x "${kptools}"
+  fi
+}
+
+# Extract boot.img from the OTA and pre-patch its kernel with KernelPatch for APatch
+function patch_apatch_boot_image() {
+  local ota_file="${1}"
+  local output_boot_img="${2}"
+  local apatch_workdir="${WORKDIR}/extracted/apatch"
+  local kp_dir="${WORKDIR}/tools/kernelpatch"
+  local kp_args=("-p" "-i" "kernel.ori" "-k" "kpimg" "-o" "kernel")
+
+  if [[ -s "${output_boot_img}" ]]; then
+    log "Prepatched APatch boot image already exists at \`${output_boot_img}\`."
+    return
+  fi
+
+  log "Extracting and patching boot.img with KernelPatch for APatch..."
+  rm -rf "${apatch_workdir}"
+  mkdir -p "${apatch_workdir}/extracted"
+
+  avbroot ota extract \
+    --input "${ota_file}" \
+    --directory "${apatch_workdir}/extracted" \
+    --partition boot
+
+  cp "${kp_dir}/kptools-linux" "${apatch_workdir}/kptools"
+  cp "${kp_dir}/kpimg-android" "${apatch_workdir}/kpimg"
+
+  (
+    cd "${apatch_workdir}" || exit 1
+    ./kptools unpack "extracted/boot.img"
+
+    if ! ./kptools -i kernel -f | grep -q "CONFIG_KALLSYMS=y"; then
+      error "APatch requires CONFIG_KALLSYMS=y, but it was not found in the boot kernel."
+      exit 1
+    fi
+
+    mv kernel kernel.ori
+
+    if [[ -n "${APATCH[SUPERKEY]:-}" ]]; then
+      if [[ ! "${APATCH[SUPERKEY]}" =~ ^[A-Za-z0-9]{8,63}$ ]] ||
+        [[ ! "${APATCH[SUPERKEY]}" =~ [A-Za-z] ]] ||
+        [[ ! "${APATCH[SUPERKEY]}" =~ [0-9] ]]; then
+        error "Invalid APATCH_SUPERKEY: must be 8-63 alphanumeric characters (A-Z, a-z, 0-9) and include both letters and numbers."
+        exit 1
+      fi
+      log "Patching kernel with custom APATCH_SUPERKEY..."
+      kp_args+=("-S" "${APATCH[SUPERKEY]}")
+    else
+      log "Patching kernel in APatch 11219+ signature-authorized manager mode (no SuperKey embedded)..."
+    fi
+
+    ./kptools "${kp_args[@]}" 2>&1 | tee kptools-patch.log
+
+    if grep -Eqi "can'?t find arm64 relocation table|arm64 relocation kernel_va: 0xffffffffffffffff" kptools-patch.log; then
+      warn "KernelPatch could not resolve the arm64 relocation table and used its relative-base kallsyms path."
+    fi
+
+    if grep -Fq "use memblock_alloc_try_nid as map phys alloc" kptools-patch.log; then
+      error "KernelPatch selected the ABI-ambiguous memblock_alloc_try_nid physical fallback; refusing to use this image."
+      exit 1
+    fi
+
+    ./kptools repack "extracted/boot.img"
+
+    if [[ ! -s new-boot.img ]]; then
+      error "APatch did not produce new-boot.img."
+      exit 1
+    fi
+  )
+
+  mv "${apatch_workdir}/new-boot.img" "${output_boot_img}"
+  rm -rf "${apatch_workdir}"
+  log "APatch boot image created at \`${output_boot_img}\`."
+}
+
+# Verify that the final patched OTA's boot image is patched with KernelPatch
+function verify_apatch_ota() {
+  local ota_file="${1}"
+  local verify_dir="${WORKDIR}/extracted/apatch-verify"
+  local kp_dir="${WORKDIR}/tools/kernelpatch"
+
+  log "Verifying APatch in final patched OTA..."
+  rm -rf "${verify_dir}"
+  mkdir -p "${verify_dir}/extracted"
+
+  avbroot ota extract \
+    --input "${ota_file}" \
+    --directory "${verify_dir}/extracted" \
+    --partition boot
+
+  cp "${kp_dir}/kptools-linux" "${verify_dir}/kptools"
+
+  (
+    cd "${verify_dir}" || exit 1
+    ./kptools unpack "extracted/boot.img"
+    if ! ./kptools -i kernel -l | grep -q "patched=true"; then
+      error "Final OTA verification failed: boot kernel is not patched with KernelPatch."
+      exit 1
+    fi
+  )
+
+  rm -rf "${verify_dir}"
+  log "Verified APatch in final OTA boot image: \`${ota_file}\`\n"
 }
 
 # Function to check the flag status
@@ -218,20 +412,33 @@ function patch_ota() {
       fi
     done
 
-    # Add support for Magisk if root config is enabled
-    if [[ "${ADDITIONALS[ROOT]}" == 'true' ]]; then
-      log "Magisk is enabled. Modifying the setup script...\n"
-      args+=("--patch-arg=--magisk" "--patch-arg" "${magisk_path}")
-      args+=("--patch-arg=--magisk-preinit-device" "--patch-arg" "${MAGISK[PREINIT]}")
-    else
-      log "Magisk is not enabled. Skipping...\n"
-    fi
-
     # Have to clear storage space because, `csig` results in storage runout
     rm -rf ${WORKDIR}/extracted/extracts/
 
+    local root_flavor
+    root_flavor=$(resolve_root_flavor "${ADDITIONALS[ROOT]}")
+    local apatch_boot_image="${WORKDIR}/extracted/apatch-new-boot.img"
+
+    # Add support for Magisk or APatch if root config is enabled
+    if [[ "${root_flavor}" == 'magisk' ]]; then
+      log "Magisk is enabled. Modifying the setup script...\n"
+      args+=("--patch-arg=--magisk" "--patch-arg" "${magisk_path}")
+      args+=("--patch-arg=--magisk-preinit-device" "--patch-arg" "${MAGISK[PREINIT]}")
+    elif [[ "${root_flavor}" == 'apatch' ]]; then
+      log "APatch is enabled. Prepatching boot.img with KernelPatch...\n"
+      patch_apatch_boot_image "${ota_zip}.zip" "${apatch_boot_image}"
+      args+=("--patch-arg=--prepatched" "--patch-arg" "${apatch_boot_image}")
+    else
+      log "Root is not enabled (rootless flavor). Skipping...\n"
+    fi
+
     # Python command to run the patch script
     python ${my_avbroot_setup}/patch.py "${args[@]}"
+
+    if [[ "${root_flavor}" == 'apatch' ]]; then
+      verify_apatch_ota "${OUTPUTS[PATCHED_OTA]}"
+      rm -f "${apatch_boot_image}"
+    fi
   fi
 
   # Deactivate the virtual environment after patching the OTA
@@ -460,8 +667,20 @@ function make_directories() {
 
 function generate_ota_info() {
   # Detect build flavor
+  local root_flavor
   local flavor
-  flavor=$([[ ${ADDITIONALS[ROOT]} == 'true' ]] && echo "magisk-${VERSION[MAGISK]}" || echo "rootless")
+  root_flavor=$(resolve_root_flavor "${ADDITIONALS[ROOT]}")
+  case "${root_flavor}" in
+    apatch)
+      flavor="apatch-${VERSION[APATCH]}"
+      ;;
+    magisk)
+      flavor="magisk-${VERSION[MAGISK]}"
+      ;;
+    *)
+      flavor="rootless"
+      ;;
+  esac
   # e.g. bluejay-2024082200-rootless-abc12345-dirty.zip
   OUTPUTS[PATCHED_OTA]="${DEVICE_NAME}-${VERSION[GRAPHENEOS]}-${flavor}-$(git rev-parse --short HEAD)$(dirty_suffix).zip"
 }
@@ -487,12 +706,15 @@ function check_toml_env() {
         printf -v "${key}" '%s' "${config_vars[$key]}"
       done
 
-      # `ROOT` and `MAGISK_PREINIT` are friendly aliases for the internal variables
+      # `ROOT`, `MAGISK_PREINIT`, and `APATCH_SUPERKEY` are friendly aliases for the internal variables
       if [[ -n "${config_vars[ROOT]:-}" ]]; then
-        ADDITIONALS[ROOT]="${config_vars[ROOT]}"
+        ADDITIONALS[ROOT]=$(resolve_root_flavor "${config_vars[ROOT]}")
       fi
       if [[ -n "${config_vars[MAGISK_PREINIT]:-}" ]]; then
         MAGISK[PREINIT]="${config_vars[MAGISK_PREINIT]}"
+      fi
+      if [[ -n "${config_vars[APATCH_SUPERKEY]:-}" ]]; then
+        APATCH[SUPERKEY]="${config_vars[APATCH_SUPERKEY]}"
       fi
     else
       error "Failed to find the required variables in \`${toml_file}\`.\n"
@@ -514,6 +736,7 @@ function supported_tools() {
   for tool in "${tools[@]}"; do
     echo -e "- ${tool}"
   done
+  echo -e "- apatch"
   echo -e "- magisk"
 }
 

@@ -4,6 +4,7 @@ source src/logger.sh
 
 # Declare associative arrays and variables
 declare -A ADDITIONALS
+declare -A APATCH
 declare -A GRAPHENEOS
 declare -A KEYS
 declare -A MAGISK
@@ -30,14 +31,26 @@ GITHUB_USER="${GITHUB_USER:-Finnyus}" # GitHub username
 # Application version variables
 VERSION[AFSR]="${VERSION[AFSR]:-2.0.0}"
 VERSION[ALTERINSTALLER]="${VERSION[ALTERINSTALLER]:-2.4}"
+VERSION[APATCH]="${VERSION[APATCH]:-}"
 VERSION[AVBROOT]="${VERSION[AVBROOT]:-3.34.1}"
 VERSION[AVBROOT_SETUP]="9161b3e13416790d7e6da21d9dac5a14bc724504" # Commit hash
 VERSION[BCR]="${VERSION[BCR]:-3.9}"
 VERSION[CUSTOTA]="${VERSION[CUSTOTA]:-6.6}"
 VERSION[GRAPHENEOS]="${VERSION[GRAPHENEOS]:-}"
+VERSION[KERNELPATCH]="${VERSION[KERNELPATCH]:-0.13.9}"
 VERSION[MAGISK]="${VERSION[MAGISK]:-}"
 VERSION[MSD]="${VERSION[MSD]:-2.5}"
 VERSION[OEMUNLOCKONBOOT]="${VERSION[OEMUNLOCKONBOOT]:-1.4}"
+
+# APatch / KernelPatch
+APATCH[REPOSITORY]="${APATCH_REPOSITORY:-bmax121/APatch}"
+# Optional SuperKey; when empty, APatch 11219+ uses signature-authorized manager mode
+APATCH[SUPERKEY]="${APATCH_SUPERKEY:-}"
+# Fork of bmax121/KernelPatch carrying GrapheneOS MTE & ramdisk/DTB reservation fixes
+APATCH[KERNELPATCH_REPO]="${APATCH_KERNELPATCH_REPO:-david568303/KernelPatch}"
+APATCH[KERNELPATCH_COMMIT]="${APATCH_KERNELPATCH_COMMIT:-280d32d967feb7ddc0fd1848aa1d1388807945d5}"
+APATCH[TOOLCHAIN_URL]="${APATCH_TOOLCHAIN_URL:-https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz}"
+APATCH[TOOLCHAIN_SHA256]="${APATCH_TOOLCHAIN_SHA256:-62d66e0ad7bd7f2a183d236ee301a5c73c737c886c7944aa4f39415aab528daf}"
 
 # Magisk
 MAGISK[PREINIT]="${MAGISK_PREINIT:-}"
@@ -75,7 +88,7 @@ ADDITIONALS[AVBROOT]="${ADDITIONALS[AVBROOT]:-true}"                   # Android
 ADDITIONALS[CUSTOTA_TOOL]="${ADDITIONALS[CUSTOTA_TOOL]:-true}"         # Custom OTA Tool
 ADDITIONALS[MY_AVBROOT_SETUP]="${ADDITIONALS[MY_AVBROOT_SETUP]:-true}" # My AVBRoot setup
 
-ADDITIONALS[ROOT]="${ADDITIONALS_ROOT:-false}"   # Only Magisk is supported
+ADDITIONALS[ROOT]="${ADDITIONALS_ROOT:-apatch}"  # Supported values: `apatch`, `magisk`, `rootless`
 ADDITIONALS[RETRY]="${ADDITIONALS[RETRY]:-true}" # Auto download signatures
 
 # Outputs

@@ -4,15 +4,25 @@
 
 source src/declarations.sh
 
-# Fetch the latest version of GrapheneOS and Magisk and sets up the OTA URL
+# Fetch the latest version of GrapheneOS, Magisk, and APatch and sets up the OTA URL
 function get_latest_version() {
   local latest_grapheneos_version
   local latest_magisk_version
+  local latest_apatch_version
 
   latest_grapheneos_version=$(curl -sL "${GRAPHENEOS[OTA_BASE_URL]}/${DEVICE_NAME}-${GRAPHENEOS[UPDATE_CHANNEL]}" | sed 's/ .*//')
   # Annotated tags produce an extra `<tag>^{}` entry that must not become the version
   latest_magisk_version=$(
     git ls-remote --tags "${DOMAIN}/${MAGISK[REPOSITORY]}.git" |
+      awk -F'\t' '{print $2}' |
+      grep -E 'refs/tags/' |
+      grep -v '\^{}$' |
+      sed 's/refs\/tags\///' |
+      sort -V |
+      tail -n1
+  )
+  latest_apatch_version=$(
+    git ls-remote --tags "${DOMAIN}/${APATCH[REPOSITORY]}.git" |
       awk -F'\t' '{print $2}' |
       grep -E 'refs/tags/' |
       grep -v '\^{}$' |
@@ -48,6 +58,15 @@ function get_latest_version() {
     exit 1
   else
     VERSION[MAGISK]="${latest_magisk_version}"
+  fi
+
+  if [[ -z "${VERSION[APATCH]}" || "${VERSION[APATCH]}" == "latest" ]]; then
+    if [[ -z "${latest_apatch_version}" ]]; then
+      error "Failed to get the latest APatch version."
+      exit 1
+    else
+      VERSION[APATCH]="${latest_apatch_version}"
+    fi
   fi
 }
 

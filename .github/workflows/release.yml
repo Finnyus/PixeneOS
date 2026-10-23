@@ -11,12 +11,16 @@ on:
         description: Device code name
         required: true
       root:
-        description: Add root to the build
+        description: "Root flavor to build (`apatch`, `magisk`, or `rootless`)"
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - apatch
+          - magisk
+          - rootless
+        default: apatch
       magisk-preinit-device:
-        description: Magisk preinit device. For example, "sda8", "sda15" etc.,
+        description: Magisk preinit device (only required when `root` is `magisk`). For example, "sda8", "sda15" etc.,
         required: false
       update-channel:
         description: GrapheneOS update channel. Supports `alpha`, `beta` and `stable`. Defaults to `stable`
@@ -39,8 +43,8 @@ on:
         type: string
       root:
         required: false
-        type: boolean
-        default: false
+        type: string
+        default: apatch
       magisk-preinit-device:
         required: false
         type: string
@@ -86,16 +90,16 @@ jobs:
           # Let scheduled runs build rooted OTAs when env.toml enables it
           echo "ROOT=${ADDITIONALS[ROOT]}" >> $GITHUB_ENV
           echo "MAGISK_PREINIT=${MAGISK[PREINIT]}" >> $GITHUB_ENV
+          echo "APATCH_SUPERKEY=${APATCH[SUPERKEY]}" >> $GITHUB_ENV
 
-      - name: Check if `magisk-preinit-device` is set when `root` is true
+      - name: Check if `magisk-preinit-device` is set when `root` is `magisk`
         run: |
           # Inputs win on manual runs, env.toml supplies the values on schedule
           root="${{ inputs.root || env.ROOT }}"
           magisk_preinit_device="${{ inputs.magisk-preinit-device || env.MAGISK_PREINIT }}"
 
-          # Ensure that the boolean comparison is correctly handled
-          if [ "$root" == "true" ] && [ -z "$magisk_preinit_device" ]; then
-            echo -e "::error:: magisk-preinit-device is required when root is true."
+          if [ "$root" == "magisk" ] && [ -z "$magisk_preinit_device" ]; then
+            echo -e "::error:: magisk-preinit-device is required when root is magisk."
             exit 1
           fi
 
@@ -157,6 +161,7 @@ jobs:
         shell: bash
         env:
           ADDITIONALS_ROOT: ${{ inputs.root || env.ROOT }}
+          APATCH_SUPERKEY: ${{ secrets.APATCH_SUPERKEY || env.APATCH_SUPERKEY }}
           CLEANUP: true
           MAGISK_PREINIT: ${{ inputs.magisk-preinit-device || env.MAGISK_PREINIT }}
           PASSPHRASE_AVB: ${{ secrets.PASSPHRASE_AVB }}

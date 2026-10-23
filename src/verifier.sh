@@ -39,7 +39,11 @@ function verify_downloads() {
 
   log "Verifying \`${tool}\`..."
 
-  if [[ -f "${WORKDIR}/modules/${tool}.zip" ]] && [ "${tool}" != "magisk" ]; then
+  if [[ "${tool}" == "kernelpatch" ]]; then
+    if [[ -s "${WORKDIR}/tools/kernelpatch/kpimg-android" && -x "${WORKDIR}/tools/kernelpatch/kptools-linux" ]]; then
+      tool_path="${WORKDIR}/tools/kernelpatch"
+    fi
+  elif [[ -f "${WORKDIR}/modules/${tool}.zip" ]] && [ "${tool}" != "magisk" ]; then
     tool_path="${WORKDIR}/modules/${tool}.zip"
   elif [[ -f "${WORKDIR}/modules/${tool}.apk" ]]; then
     tool_path="${WORKDIR}/modules/${tool}.apk"
@@ -62,8 +66,8 @@ function verify_downloads() {
     return $?
   fi
 
-  # Check if the signature is present, `my-avbroot-setup` and `magisk` do not have one
-  if [[ "${tool}" != "my-avbroot-setup" && "${tool}" != "magisk" ]] &&
+  # Check if the signature is present, `my-avbroot-setup`, `magisk`, and `kernelpatch` do not have one
+  if [[ "${tool}" != "my-avbroot-setup" && "${tool}" != "magisk" && "${tool}" != "kernelpatch" ]] &&
     [[ ! -f "${WORKDIR}/signatures/${tool}.zip.sig" ]]; then
     error "Signature for \`${tool}\` not found in \`${WORKDIR}/signatures\`\n"
     auto_retry_check
